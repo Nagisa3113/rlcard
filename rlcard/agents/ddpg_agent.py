@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
-
+from typing import Union
 import os
 import random
 import numpy as np
@@ -32,17 +32,21 @@ import torch
 import torch.nn as nn
 from collections import namedtuple
 from copy import deepcopy
+from torch.nn.utils import clip_grad_norm_
+
+from torch.optim import Adam
 
 from rlcard.utils.utils import remove_illegal
 
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state', 'done', 'legal_actions'])
 
 
-class DQNAgent(object):
+class DDPGAgent(object):
     '''
     Approximate clone of rlcard.agents.dqn_agent.DQNAgent
     that depends on PyTorch instead of Tensorflow
     '''
+
     def __init__(self,
                  replay_memory_size=20000,
                  replay_memory_init_size=100,
@@ -53,13 +57,15 @@ class DQNAgent(object):
                  epsilon_decay_steps=20000,
                  batch_size=64,
                  num_actions=2,
-                 state_shape=None,
                  train_every=10,
+                 state_shape=None,
                  mlp_layers=None,
                  learning_rate=0.0005,
                  device=None,
                  save_path=None,
-                 save_every=float('inf'),):
+                 hidden_layers_sizes=[64, 64],
+                 q_mlp_layers=[64, 64],
+                 save_every=float('inf'), ):
 
         '''
         Q-Learning algorithm for off-policy TD control using Function Approximation.
@@ -87,6 +93,7 @@ class DQNAgent(object):
             save_path (str): The path to save the model checkpoints
             save_every (int): Save the model every X training steps
         '''
+
         self.use_raw = False
         self.replay_memory_init_size = replay_memory_init_size
         self.update_target_estimator_every = update_target_estimator_every
@@ -111,18 +118,37 @@ class DQNAgent(object):
         # The epsilon decay scheduler
         self.epsilons = np.linspace(epsilon_start, epsilon_end, epsilon_decay_steps)
 
-        # Create estimators
-        self.q_estimator = Estimator(num_actions=num_actions, learning_rate=learning_rate, state_shape=state_shape, \
-            mlp_layers=mlp_layers, device=self.device)
-        self.target_estimator = Estimator(num_actions=num_actions, learning_rate=learning_rate, state_shape=state_shape, \
-            mlp_layers=mlp_layers, device=self.device)
-
         # Create replay memory
         self.memory = Memory(replay_memory_size, batch_size)
-        
+
         # Checkpoint saving parameters
         self.save_path = save_path
         self.save_every = save_every
+
+        self.obs_dim = state_shape[0]
+        self.act_dim = num_actions
+        self.device = device
+        self.a_lr = 0.0001
+        self.c_lr = 0.0001
+        self.batch_size = 64
+        self.gamma = 0.95
+        self.tau = 0.001
+        self.model_episode = 0
+        self.eps = 0.5
+        self.decay_speed = 0.99998
+        self.output_activation = 'softmax'
+
+        self.actor = Actor(self.obs_dim, self.act_dim, self.output_activation).to(self.device)
+        self.critic = Critic(self.obs_dim, self.act_dim).to(self.device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr)
+        self.actor_target = Actor(self.obs_dim, self.act_dim, self.output_activation).to(self.device)
+        self.critic_target = Critic(self.obs_dim, self.act_dim).to(self.device)
+        self.memory = Memory(memory_size=1e5, batch_size=64)
+        hard_update(self.actor, self.actor_target)
+        hard_update(self.critic, self.critic_target)
+        self.c_loss = None
+        self.a_loss = None
 
     def feed(self, ts):
         ''' Store data in to replay buffer and train the agent. There are two stages.
@@ -133,10 +159,11 @@ class DQNAgent(object):
             ts (list): a list of 5 elements that represent the transition
         '''
         (state, action, reward, next_state, done) = tuple(ts)
-        self.feed_memory(state['obs'], action, reward, next_state['obs'], list(next_state['legal_actions'].keys()), done)
+        self.feed_memory(state['obs'], action, reward, next_state['obs'], list(next_state['legal_actions'].keys()),
+                         done)
         self.total_t += 1
         tmp = self.total_t - self.replay_memory_init_size
-        if tmp>=0 and tmp%self.train_every == 0:
+        if tmp >= 0 and tmp % self.train_every == 0:
             self.train()
 
     def step(self, state):
@@ -150,7 +177,7 @@ class DQNAgent(object):
             action (int): an action id
         '''
         q_values = self.predict(state)
-        epsilon = self.epsilons[min(self.total_t, self.epsilon_decay_steps-1)]
+        epsilon = self.epsilons[min(self.total_t, self.epsilon_decay_steps - 1)]
         legal_actions = list(state['legal_actions'].keys())
         probs = np.ones(len(legal_actions), dtype=float) * epsilon / len(legal_actions)
         best_action_idx = legal_actions.index(np.argmax(q_values))
@@ -173,7 +200,8 @@ class DQNAgent(object):
         best_action = np.argmax(q_values)
 
         info = {}
-        info['values'] = {state['raw_legal_actions'][i]: float(q_values[list(state['legal_actions'].keys())[i]]) for i in range(len(state['legal_actions']))}
+        info['values'] = {state['raw_legal_actions'][i]: float(q_values[list(state['legal_actions'].keys())[i]]) for i
+                          in range(len(state['legal_actions']))}
 
         return best_action, info
 
@@ -186,8 +214,9 @@ class DQNAgent(object):
         Returns:
             q_values (numpy.array): a 1-d array where each entry represents a Q value
         '''
-        
-        q_values = self.q_estimator.predict_nograd(np.expand_dims(state['obs'], 0))[0]
+
+        obs = np.expand_dims(state['obs'], 0)
+        q_values = self.actor(obs).cpu().detach().numpy()[0]
         masked_q_values = -np.inf * np.ones(self.num_actions, dtype=float)
         legal_actions = list(state['legal_actions'].keys())
         masked_q_values[legal_actions] = q_values[legal_actions]
@@ -202,26 +231,46 @@ class DQNAgent(object):
         '''
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, legal_actions_batch = self.memory.sample()
 
-        # Calculate best next actions using Q-network (Double DQN)
-        q_values_next = self.q_estimator.predict_nograd(next_state_batch)
-        legal_actions = []
-        for b in range(self.batch_size):
-            legal_actions.extend([i + b * self.num_actions for i in legal_actions_batch[b]])
-        masked_q_values = -np.inf * np.ones(self.num_actions * self.batch_size, dtype=float)
-        masked_q_values[legal_actions] = q_values_next.flatten()[legal_actions]
-        masked_q_values = masked_q_values.reshape((self.batch_size, self.num_actions))
-        best_actions = np.argmax(masked_q_values, axis=1)
+        # state_batch = torch.Tensor(state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
+        # action_batch = torch.Tensor(action_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
+        # reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
+        # next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
+        # done_batch = torch.Tensor(done_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
 
-        # Evaluate best next actions using Target-network (Double DQN)
-        q_values_next_target = self.target_estimator.predict_nograd(next_state_batch)
-        target_batch = reward_batch + np.invert(done_batch).astype(np.float32) * \
-            self.discount_factor * q_values_next_target[np.arange(self.batch_size), best_actions]
+        with torch.no_grad():
+            target_next_actions = self.actor_target(next_state_batch)
+            target_next_q = self.critic_target(next_state_batch, target_next_actions)
+            q_hat = reward_batch + self.gamma * target_next_q * (1 - done_batch)
 
-        # Perform gradient descent update
-        state_batch = np.array(state_batch)
+        # Compute critic gradient estimation according to Eq.(8)
+        main_q = self.critic(state_batch, action_batch)
+        loss_critic = torch.nn.MSELoss()(q_hat, main_q)
 
-        loss = self.q_estimator.update(state_batch, action_batch, target_batch)
-        print('\rINFO - Step {}, rl-loss: {}'.format(self.total_t, loss), end='')
+        # Update the critic networks based on Adam
+        self.critic_optimizer.zero_grad()
+        loss_critic.backward()
+        clip_grad_norm_(self.critic.parameters(), 1)
+        self.critic_optimizer.step()
+
+        # Compute actor gradient estimation according to Eq.(7)
+        # and replace Q-value with the critic estimation
+        loss_actor = -self.critic(state_batch, self.actor(state_batch)).mean()
+
+        # Update the actor networks based on Adam
+        self.actor_optimizer.zero_grad()
+        loss_actor.backward()
+        clip_grad_norm_(self.actor.parameters(), 1)
+        self.actor_optimizer.step()
+
+        self.c_loss = loss_critic.item()
+        self.a_loss = loss_actor.item()
+
+        # Update the target networks
+        soft_update(self.actor, self.actor_target, self.tau)
+        soft_update(self.critic, self.critic_target, self.tau)
+
+        print('\rINFO - Step {}, c-loss: {}'.format(self.total_t, self.c_loss), end='')
+        print('\rINFO - Step {}, a-loss: {}'.format(self.total_t, self.a_loss), end='')
 
         # Update the target estimator
         if self.train_t % self.update_target_estimator_every == 0:
@@ -231,11 +280,10 @@ class DQNAgent(object):
         self.train_t += 1
 
         if self.save_path and self.train_t % self.save_every == 0:
-            # To preserve every checkpoint separately, 
+            # To preserve every checkpoint separately,
             # add another argument to the function call parameterized by self.train_t
             self.save_checkpoint(self.save_path)
             print("\nINFO - Saved model checkpoint.")
-
 
     def feed_memory(self, state, action, reward, next_state, legal_actions, done):
         ''' Feed transition to memory
@@ -261,9 +309,9 @@ class DQNAgent(object):
         Checkpoint attributes are used to save and restore the model in the middle of training
         Saves the model state dict, optimizer state dict, and all other instance variables
         '''
-        
+
         return {
-            'agent_type': 'DQNAgent',
+            'agent_type': 'DDPGAgent',
             'q_estimator': self.q_estimator.checkpoint_attributes(),
             'memory': self.memory.checkpoint_attributes(),
             'total_t': self.total_t,
@@ -286,11 +334,11 @@ class DQNAgent(object):
     def from_checkpoint(cls, checkpoint):
         '''
         Restore the model from a checkpoint
-        
+
         Args:
             checkpoint (dict): the checkpoint attributes generated by checkpoint_attributes()
         '''
-        
+
         print("\nINFO - Restoring model from checkpoint...")
         agent_instance = cls(
             replay_memory_size=checkpoint['memory']['memory_size'],
@@ -301,7 +349,7 @@ class DQNAgent(object):
             epsilon_end=checkpoint['epsilon_end'],
             epsilon_decay_steps=checkpoint['epsilon_decay_steps'],
             batch_size=checkpoint['batch_size'],
-            num_actions=checkpoint['num_actions'], 
+            num_actions=checkpoint['num_actions'],
             state_shape=checkpoint['q_estimator']['state_shape'],
             train_every=checkpoint['train_every'],
             mlp_layers=checkpoint['q_estimator']['mlp_layers'],
@@ -310,16 +358,14 @@ class DQNAgent(object):
             save_path=checkpoint['save_path'],
             save_every=checkpoint['save_every'],
         )
-        
+
         agent_instance.total_t = checkpoint['total_t']
         agent_instance.train_t = checkpoint['train_t']
-        
-        agent_instance.q_estimator = Estimator.from_checkpoint(checkpoint['q_estimator'])
-        agent_instance.target_estimator = deepcopy(agent_instance.q_estimator)
+
         agent_instance.memory = Memory.from_checkpoint(checkpoint['memory'])
 
         return agent_instance
-                     
+
     def save_checkpoint(self, path, filename='checkpoint_dqn.pt'):
         ''' Save the model checkpoint (all attributes)
 
@@ -329,169 +375,6 @@ class DQNAgent(object):
         '''
         torch.save(self.checkpoint_attributes(), os.path.join(path, filename))
 
-
-class Estimator(object):
-    '''
-    Approximate clone of rlcard.agents.dqn_agent.Estimator that
-    uses PyTorch instead of Tensorflow.  All methods input/output np.ndarray.
-
-    Q-Value Estimator neural network.
-    This network is used for both the Q-Network and the Target Network.
-    '''
-
-    def __init__(self, num_actions=2, learning_rate=0.001, state_shape=None, mlp_layers=None, device=None):
-        ''' Initilalize an Estimator object.
-
-        Args:
-            num_actions (int): the number output actions
-            state_shape (list): the shape of the state space
-            mlp_layers (list): size of outputs of mlp layers
-            device (torch.device): whether to use cpu or gpu
-        '''
-        self.num_actions = num_actions
-        self.learning_rate=learning_rate
-        self.state_shape = state_shape
-        self.mlp_layers = mlp_layers
-        self.device = device
-
-        # set up Q model and place it in eval mode
-        qnet = EstimatorNetwork(num_actions, state_shape, mlp_layers)
-        qnet = qnet.to(self.device)
-        self.qnet = qnet
-        self.qnet.eval()
-
-        # initialize the weights using Xavier init
-        for p in self.qnet.parameters():
-            if len(p.data.shape) > 1:
-                nn.init.xavier_uniform_(p.data)
-
-        # set up loss function
-        self.mse_loss = nn.MSELoss(reduction='mean')
-
-        # set up optimizer
-        self.optimizer =  torch.optim.Adam(self.qnet.parameters(), lr=self.learning_rate)
-
-    def predict_nograd(self, s):
-        ''' Predicts action values, but prediction is not included
-            in the computation graph.  It is used to predict optimal next
-            actions in the Double-DQN algorithm.
-
-        Args:
-          s (np.ndarray): (batch, state_len)
-
-        Returns:
-          np.ndarray of shape (batch_size, NUM_VALID_ACTIONS) containing the estimated
-          action values.
-        '''
-        with torch.no_grad():
-            s = torch.from_numpy(s).float().to(self.device)
-            q_as = self.qnet(s).cpu().numpy()
-        return q_as
-
-    def update(self, s, a, y):
-        ''' Updates the estimator towards the given targets.
-            In this case y is the target-network estimated
-            value of the Q-network optimal actions, which
-            is labeled y in Algorithm 1 of Minh et al. (2015)
-
-        Args:
-          s (np.ndarray): (batch, state_shape) state representation
-          a (np.ndarray): (batch,) integer sampled actions
-          y (np.ndarray): (batch,) value of optimal actions according to Q-target
-
-        Returns:
-          The calculated loss on the batch.
-        '''
-        self.optimizer.zero_grad()
-
-        self.qnet.train()
-
-        s = torch.from_numpy(s).float().to(self.device)
-        a = torch.from_numpy(a).long().to(self.device)
-        y = torch.from_numpy(y).float().to(self.device)
-
-        # (batch, state_shape) -> (batch, num_actions)
-        q_as = self.qnet(s)
-
-        # (batch, num_actions) -> (batch, )
-        Q = torch.gather(q_as, dim=-1, index=a.unsqueeze(-1)).squeeze(-1)
-
-        # update model
-        batch_loss = self.mse_loss(Q, y)
-        batch_loss.backward()
-        self.optimizer.step()
-        batch_loss = batch_loss.item()
-
-        self.qnet.eval()
-
-        return batch_loss
-    
-    def checkpoint_attributes(self):
-        ''' Return the attributes needed to restore the model from a checkpoint
-        '''
-        return {
-            'qnet': self.qnet.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
-            'num_actions': self.num_actions,
-            'learning_rate': self.learning_rate,
-            'state_shape': self.state_shape,
-            'mlp_layers': self.mlp_layers,
-            'device': self.device
-        }
-        
-    @classmethod
-    def from_checkpoint(cls, checkpoint):
-        ''' Restore the model from a checkpoint
-        '''
-        estimator = cls(
-            num_actions=checkpoint['num_actions'],
-            learning_rate=checkpoint['learning_rate'],
-            state_shape=checkpoint['state_shape'],
-            mlp_layers=checkpoint['mlp_layers'],
-            device=checkpoint['device']
-        )
-        
-        estimator.qnet.load_state_dict(checkpoint['qnet'])
-        estimator.optimizer.load_state_dict(checkpoint['optimizer'])
-        return estimator
-
-
-class EstimatorNetwork(nn.Module):
-    ''' The function approximation network for Estimator
-        It is just a series of tanh layers. All in/out are torch.tensor
-    '''
-
-    def __init__(self, num_actions=2, state_shape=None, mlp_layers=None):
-        ''' Initialize the Q network
-
-        Args:
-            num_actions (int): number of legal actions
-            state_shape (list): shape of state tensor
-            mlp_layers (list): output size of each fc layer
-        '''
-        super(EstimatorNetwork, self).__init__()
-
-        self.num_actions = num_actions
-        self.state_shape = state_shape
-        self.mlp_layers = mlp_layers
-
-        # build the Q network
-        layer_dims = [np.prod(self.state_shape)] + self.mlp_layers
-        fc = [nn.Flatten()]
-        fc.append(nn.BatchNorm1d(layer_dims[0]))
-        for i in range(len(layer_dims)-1):
-            fc.append(nn.Linear(layer_dims[i], layer_dims[i+1], bias=True))
-            fc.append(nn.Tanh())
-        fc.append(nn.Linear(layer_dims[-1], self.num_actions, bias=True))
-        self.fc_layers = nn.Sequential(*fc)
-
-    def forward(self, s):
-        ''' Predict action values
-
-        Args:
-            s  (Tensor): (batch, state_shape)
-        '''
-        return self.fc_layers(s)
 
 class Memory(object):
     ''' Memory for saving transitions
@@ -539,25 +422,161 @@ class Memory(object):
     def checkpoint_attributes(self):
         ''' Returns the attributes that need to be checkpointed
         '''
-        
+
         return {
             'memory_size': self.memory_size,
             'batch_size': self.batch_size,
             'memory': self.memory
         }
-            
+
     @classmethod
     def from_checkpoint(cls, checkpoint):
-        ''' 
+        '''
         Restores the attributes from the checkpoint
-        
+
         Args:
             checkpoint (dict): the checkpoint dictionary
-            
+
         Returns:
             instance (Memory): the restored instance
         '''
-        
+
         instance = cls(checkpoint['memory_size'], checkpoint['batch_size'])
         instance.memory = checkpoint['memory']
         return instance
+
+
+Activation = Union[str, nn.Module]
+
+_str_to_activation = {
+    'relu': nn.ReLU(),
+    'tanh': nn.Tanh(),
+    'identity': nn.Identity(),
+    'softmax': nn.Softmax(dim=-1),
+}
+
+
+def mlp(sizes,
+        activation: Activation = 'relu',
+        output_activation: Activation = 'identity'):
+    if isinstance(activation, str):
+        activation = _str_to_activation[activation]
+    if isinstance(output_activation, str):
+        output_activation = _str_to_activation[output_activation]
+
+    layers = []
+    for i in range(len(sizes) - 1):
+        act = activation if i < len(sizes) - 2 else output_activation
+        layers += [nn.Linear(sizes[i], sizes[i + 1]), act]
+    return nn.Sequential(*layers)
+
+
+class Actor(nn.Module):
+    def __init__(self, obs_dim, act_dim, output_activation='tanh'):
+        super().__init__()
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+
+        HIDDEN_SIZE = 256
+
+        sizes_prev = [obs_dim, HIDDEN_SIZE]
+        middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
+        sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
+
+        self.prev_dense = mlp(sizes_prev)
+
+        sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
+
+        self.prev_dense = mlp(sizes_prev)
+        self.post_dense = mlp(sizes_post, output_activation=output_activation)
+
+    def forward(self, obs_batch):
+        obs_batch = torch.from_numpy(obs_batch).float().to('cuda:0')
+        out = self.prev_dense(obs_batch)
+        out = self.post_dense(out)
+        return out
+
+
+class Critic(nn.Module):
+    def __init__(self, obs_dim, act_dim):
+        super().__init__()
+        HIDDEN_SIZE = 256
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+
+        sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE]
+
+        sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, 1]
+
+        self.prev_dense = mlp(sizes_prev)
+        self.post_dense = mlp(sizes_post)
+
+    def forward(self, obs_batch, action_batch):
+        obs = torch.from_numpy(obs_batch).float().to('cuda:0')
+
+        # if action_batch.dtype != torch.float32:
+        #     action_batch = torch.from_numpy(action_batch).float().to('cuda:0')
+        # print(type(obs))
+        # print(type(action_batch))
+        out = torch.cat((obs, action_batch), dim=-1)
+        out = self.prev_dense(out)
+
+        out = self.post_dense(out)
+        out = out.cpu().numpy()
+        return out
+
+
+class LSTMNet(nn.Module):
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 batch_first=True,
+                 bidirectional=True):
+        super(LSTMNet, self).__init__()
+
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            batch_first=batch_first,
+            bidirectional=bidirectional
+        )
+
+    def forward(self, data, ):
+        output, (_, _) = self.lstm(data)
+        return output
+
+
+class MLP(nn.Module):
+    def __init__(self, obs_dim, act_dim, num_agents, args):
+        super().__init__()
+
+        HIDDEN_SIZE = 256
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
+        self.num_agents = num_agents
+
+        self.args = args
+
+        sizes_prev = [obs_dim, HIDDEN_SIZE]
+
+        self.prev_dense = mlp(sizes_prev)
+        sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
+
+        self.prev_dense = mlp(sizes_prev)
+        self.post_dense = mlp(sizes_post)
+
+    def forward(self, obs_batch):
+        out = self.prev_dense(obs_batch)
+        out = self.post_dense(out)
+        return out
+
+
+def hard_update(source, target):
+    target.load_state_dict(source.state_dict())
+
+
+def soft_update(source, target, tau):
+    for src_param, tgt_param in zip(source.parameters(), target.parameters()):
+        tgt_param.data.copy_(
+            tgt_param.data * (1.0 - tau) + src_param.data * tau
+        )

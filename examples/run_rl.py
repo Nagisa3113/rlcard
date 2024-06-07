@@ -7,6 +7,7 @@ import torch
 
 import rlcard
 from rlcard.agents import RandomAgent
+from rlcard.agents.ddpg_agent import DDPGAgent
 from rlcard.utils import (
     get_device,
     set_seed,
@@ -16,11 +17,11 @@ from rlcard.utils import (
     plot_curve,
 )
 
-def train(args):
 
+def train(args):
     # Check whether gpu is available
     device = get_device()
-        
+
     # Seed numpy, torch, random
     set_seed(args.seed)
 
@@ -41,7 +42,7 @@ def train(args):
             agent = DQNAgent(
                 num_actions=env.num_actions,
                 state_shape=env.state_shape[0],
-                mlp_layers=[64,64],
+                mlp_layers=[256, 256],
                 device=device,
                 save_path=args.log_dir,
                 save_every=args.save_every
@@ -55,12 +56,28 @@ def train(args):
             agent = NFSPAgent(
                 num_actions=env.num_actions,
                 state_shape=env.state_shape[0],
-                hidden_layers_sizes=[64,64],
-                q_mlp_layers=[64,64],
+                hidden_layers_sizes=[64, 64],
+                q_mlp_layers=[64, 64],
                 device=device,
                 save_path=args.log_dir,
                 save_every=args.save_every
             )
+
+    elif args.algorithm == 'ddpg':
+        # from rlcard.agents import DDPGAgent
+        if args.load_checkpoint_path != "":
+            agent = DDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
+        else:
+            agent = DDPGAgent(
+                num_actions=env.num_actions,
+                state_shape=env.state_shape[0],
+                hidden_layers_sizes=[64, 64],
+                q_mlp_layers=[64, 64],
+                device=device,
+                save_path=args.log_dir,
+                save_every=args.save_every
+            )
+
     agents = [agent]
     for _ in range(1, env.num_players):
         agents.append(RandomAgent(num_actions=env.num_actions))
@@ -106,6 +123,7 @@ def train(args):
     torch.save(agent, save_path)
     print('Model saved in', save_path)
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("DQN/NFSP example in RLCard")
     parser.add_argument(
@@ -127,10 +145,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        default='nfsp',
+        default='ddpg',
+        # default='dqn',
         choices=[
             'dqn',
             'nfsp',
+            'ddpg',
         ],
     )
     parser.add_argument(
@@ -162,15 +182,16 @@ if __name__ == '__main__':
         '--log_dir',
         type=str,
         # default='experiments/leduc_holdem_dqn_result/',
-        default='experiments/leduc_holdem_nfsp_result/',
+        # default='experiments/leduc_holdem_nfsp_result/',
+        default='experiments/leduc_holdem_ddpg_result',
     )
-    
+
     parser.add_argument(
         "--load_checkpoint_path",
         type=str,
         default="",
     )
-    
+
     parser.add_argument(
         "--save_every",
         type=int,
@@ -180,4 +201,3 @@ if __name__ == '__main__':
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
     train(args)
-
