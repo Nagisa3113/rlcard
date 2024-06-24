@@ -18,14 +18,14 @@ from rlcard.utils import (
 def train(args):
     # Make environments, CFR only supports Leduc Holdem
     env = rlcard.make(
-        'leduc-holdem',
+        'multi-leduc-holdem',
         config={
             'seed': 0,
             'allow_step_back': True,
         }
     )
     eval_env = rlcard.make(
-        'leduc-holdem',
+        'multi-leduc-holdem',
         config={
             'seed': 0,
         }
@@ -48,7 +48,10 @@ def train(args):
     eval_env.set_agents([
         agent,
         RandomAgent(num_actions=env.num_actions),
+        agent,
+        RandomAgent(num_actions=env.num_actions),
     ])
+
 
     # Start training
     with Logger(args.log_dir) as logger:
@@ -86,12 +89,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=2000,
+        default=200,
     )
     parser.add_argument(
         '--evaluate_every',
         type=int,
-        default=100,
+        default=20,
     )
     parser.add_argument(
         '--log_dir',

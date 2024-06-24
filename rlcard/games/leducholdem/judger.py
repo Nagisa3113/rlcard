@@ -42,13 +42,14 @@ class LeducholdemJudger:
                     winners[idx] = 1
                     break
 
-        # If non of the above conditions, the winner player is the one with the highest card rank
+        # If none of the above conditions, the winner player is the one with the highest card rank
         if sum(winners) < 1:
             max_rank = max(ranks)
             max_index = [i for i, j in enumerate(ranks) if j == max_rank]
             for idx in max_index:
                 winners[idx] = 1
 
+        # Add rule for collaborative poker
         for idx in range(len(players)):
             if winners[idx] == 1:
                 winners[(idx + 2) % len(players)] = 1

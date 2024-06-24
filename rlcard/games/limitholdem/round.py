@@ -101,7 +101,7 @@ class LimitHoldemRound:
         """
         full_actions = ['call', 'raise', 'fold', 'check']
 
-        # If the the number of raises already reaches the maximum number raises, we can not raise any more
+        # If the number of raises already reaches the maximum number raises, we can not raise any more
         if self.have_raised >= self.allowed_raise_num:
             full_actions.remove('raise')
 

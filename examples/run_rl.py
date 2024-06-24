@@ -2,8 +2,10 @@
 '''
 import os
 import argparse
+from datetime import datetime
 
 import torch
+from tensorboardX import SummaryWriter
 
 import rlcard
 from rlcard.agents import RandomAgent
@@ -16,12 +18,15 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
+from utils import make_logpath, save_config
 
 
 def train(args):
     # Check whether gpu is available
     device = get_device()
-
+    _, args.log_dir = make_logpath(args.env, args.algorithm)
+    writer = SummaryWriter(args.log_dir)
+    save_config(args, args.log_dir)
     # Seed numpy, torch, random
     set_seed(args.seed)
 
@@ -64,7 +69,6 @@ def train(args):
             )
 
     elif args.algorithm == 'ddpg':
-        # from rlcard.agents import DDPGAgent
         if args.load_checkpoint_path != "":
             agent = DDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
         else:
@@ -82,6 +86,21 @@ def train(args):
     for _ in range(1, env.num_players):
         agents.append(RandomAgent(num_actions=env.num_actions))
     env.set_agents(agents)
+
+    eval_env = rlcard.make(
+        'multi-leduc-holdem',
+        config={
+            'seed': 0,
+        }
+    )
+    eval_env.set_agents([
+        agent,
+        RandomAgent(num_actions=env.num_actions),
+        agent,
+        RandomAgent(num_actions=env.num_actions),
+    ])
+
+    eval_reward = 0
 
     # Start training
     with Logger(args.log_dir) as logger:
@@ -102,15 +121,24 @@ def train(args):
             for ts in trajectories[0]:
                 agent.feed(ts)
 
+            # writer.add_scalars('loss', global_step=episode,
+            #                    tag_scalar_dict={'actor': agent.a_loss, 'critic': agent.c_loss})
+
+            writer.add_scalar('reward', payoffs[0], global_step=episode)
+
             # Evaluate the performance. Play with random agents.
-            if episode % args.evaluate_every == 0:
-                logger.log_performance(
-                    episode,
-                    tournament(
-                        env,
-                        args.num_eval_games,
-                    )[0]
-                )
+            if episode > 0 and episode % args.evaluate_every == 0:
+                rewards = tournament(eval_env, args.num_eval_games)
+                eval_reward = rewards[0]
+                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
+            #     logger.log_performance(
+            #         episode,
+            #         tournament(
+            #             env,
+            #             args.num_eval_games,
+            #         )[0]a
+            #     )
+            #
 
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
@@ -129,17 +157,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '--env',
         type=str,
-        default='leduc-holdem',
+        default='multi-leduc-holdem',
         choices=[
-            'blackjack',
             'leduc-holdem',
             'limit-holdem',
-            'doudizhu',
-            'mahjong',
             'no-limit-holdem',
-            'uno',
-            'gin-rummy',
-            'bridge',
         ],
     )
     parser.add_argument(
@@ -147,6 +169,7 @@ if __name__ == '__main__':
         type=str,
         default='ddpg',
         # default='dqn',
+        # default='nfsp',
         choices=[
             'dqn',
             'nfsp',
@@ -166,7 +189,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=5000,
+        default=50000,
     )
     parser.add_argument(
         '--num_eval_games',
@@ -181,9 +204,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log_dir',
         type=str,
-        # default='experiments/leduc_holdem_dqn_result/',
-        # default='experiments/leduc_holdem_nfsp_result/',
-        default='experiments/leduc_holdem_ddpg_result',
+        default=datetime.now().strftime('%Y%m%d_%H%M%S'),
     )
 
     parser.add_argument(

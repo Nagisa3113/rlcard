@@ -1,11 +1,13 @@
 from rlcard.utils import *
 
+
 class Env(object):
     '''
     The base Env class. For all the environments in RLCard,
     we should base on this class and implement as many functions
     as we can.
     '''
+
     def __init__(self, config):
         ''' Initialize the environment
 
@@ -30,7 +32,7 @@ class Env(object):
         # Game specific configurations
         # Currently only support blackjack、limit-holdem、no-limit-holdem
         # TODO support game configurations for all the games
-        supported_envs = ['blackjack', 'leduc-holdem', 'limit-holdem', 'no-limit-holdem']
+        supported_envs = ['leduc-holdem', 'limit-holdem', 'no-limit-holdem']
         if self.name in supported_envs:
             _game_config = self.default_game_config.copy()
             for key in config:
@@ -47,7 +49,6 @@ class Env(object):
 
         # Set random seed, default is None
         self.seed(config['seed'])
-
 
     def reset(self):
         ''' Start a new game
@@ -75,8 +76,9 @@ class Env(object):
                 (dict): The next state
                 (int): The ID of the next player
         '''
-        if not raw_action:
-            action = self._decode_action(action)
+        if raw_action:
+            action = np.argmax(action)
+        action = self._decode_action(action)
 
         self.timestep += 1
         # Record the action for human interface
@@ -183,7 +185,6 @@ class Env(object):
             (int): The id of the current player
         '''
         return self.game.get_player_id()
-
 
     def get_state(self, player_id):
         ''' Get the state given player id

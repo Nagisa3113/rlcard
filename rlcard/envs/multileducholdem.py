@@ -9,22 +9,23 @@ from rlcard.games.leducholdem import Game
 from rlcard.utils import *
 
 DEFAULT_GAME_CONFIG = {
-        'game_num_players': 2,
-        }
+    'game_num_players': 4,
+}
 
-class LeducholdemEnv(Env):
+
+class MultiLeducholdemEnv(Env):
     ''' Leduc Hold'em Environment
     '''
 
     def __init__(self, config):
         ''' Initialize the Limitholdem environment
         '''
-        self.name = 'leduc-holdem' 
+        self.name = 'multi-leduc-holdem'
         self.default_game_config = DEFAULT_GAME_CONFIG
         self.game = Game()
         super().__init__(config)
         self.actions = ['call', 'raise', 'fold', 'check']
-        self.state_shape = [[36] for _ in range(self.num_players)]
+        self.state_shape = [[64] for _ in range(self.num_players)]
         self.action_shape = [None for _ in range(self.num_players)]
 
         with open(os.path.join(rlcard.__path__[0], 'games/leducholdem/card2index.json'), 'r') as file:
@@ -56,12 +57,13 @@ class LeducholdemEnv(Env):
 
         public_card = state['public_card']
         hand = state['hand']
-        obs = np.zeros(36)
+        obs = np.zeros(64)
         obs[self.card2index[hand]] = 1
         if public_card:
-            obs[self.card2index[public_card]+3] = 1
-        obs[state['my_chips']+6] = 1
-        obs[sum(state['all_chips'])-state['my_chips']+21] = 1
+            obs[self.card2index[public_card] + 6] = 1
+        obs[state['my_chips'] + 12] = 1
+        num = sum(state['all_chips']) - state['my_chips'] + 27
+        obs[num] = 1
         extracted_state['obs'] = obs
 
         extracted_state['raw_obs'] = state

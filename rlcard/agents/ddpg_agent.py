@@ -94,7 +94,7 @@ class DDPGAgent(object):
             save_every (int): Save the model every X training steps
         '''
 
-        self.use_raw = False
+        self.use_raw = True
         self.replay_memory_init_size = replay_memory_init_size
         self.update_target_estimator_every = update_target_estimator_every
         self.discount_factor = discount_factor
@@ -147,8 +147,8 @@ class DDPGAgent(object):
         self.memory = Memory(memory_size=1e5, batch_size=64)
         hard_update(self.actor, self.actor_target)
         hard_update(self.critic, self.critic_target)
-        self.c_loss = None
-        self.a_loss = None
+        self.c_loss = 0
+        self.a_loss = 0
 
     def feed(self, ts):
         ''' Store data in to replay buffer and train the agent. There are two stages.
@@ -177,14 +177,15 @@ class DDPGAgent(object):
             action (int): an action id
         '''
         q_values = self.predict(state)
-        epsilon = self.epsilons[min(self.total_t, self.epsilon_decay_steps - 1)]
+        # epsilon = self.epsilons[min(self.total_t, self.epsilon_decay_steps - 1)]
         legal_actions = list(state['legal_actions'].keys())
-        probs = np.ones(len(legal_actions), dtype=float) * epsilon / len(legal_actions)
-        best_action_idx = legal_actions.index(np.argmax(q_values))
-        probs[best_action_idx] += (1.0 - epsilon)
-        action_idx = np.random.choice(np.arange(len(probs)), p=probs)
+        for i in range(q_values.size):
+            if i in legal_actions:
+                q_values[i] = q_values[i]
+            else:
+                q_values[i] = 0
 
-        return legal_actions[action_idx]
+        return q_values
 
     def eval_step(self, state):
         ''' Predict the action for evaluation purpose.
@@ -216,6 +217,7 @@ class DDPGAgent(object):
         '''
 
         obs = np.expand_dims(state['obs'], 0)
+        obs = torch.Tensor(obs).to(self.device)
         q_values = self.actor(obs).cpu().detach().numpy()[0]
         masked_q_values = -np.inf * np.ones(self.num_actions, dtype=float)
         legal_actions = list(state['legal_actions'].keys())
@@ -231,11 +233,11 @@ class DDPGAgent(object):
         '''
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, legal_actions_batch = self.memory.sample()
 
-        # state_batch = torch.Tensor(state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
-        # action_batch = torch.Tensor(action_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
-        # reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
-        # next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
-        # done_batch = torch.Tensor(done_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
+        state_batch = torch.Tensor(state_batch).to(self.device)
+        action_batch = torch.Tensor(action_batch).to(self.device)
+        reward_batch = torch.Tensor(reward_batch).reshape(-1, 1).to(self.device)
+        next_state_batch = torch.Tensor(next_state_batch).to(self.device)
+        done_batch = torch.Tensor(done_batch).reshape(-1, 1).to(self.device)
 
         with torch.no_grad():
             target_next_actions = self.actor_target(next_state_batch)
@@ -243,6 +245,7 @@ class DDPGAgent(object):
             q_hat = reward_batch + self.gamma * target_next_q * (1 - done_batch)
 
         # Compute critic gradient estimation according to Eq.(8)
+        action_batch = torch.Tensor(action_batch).to(self.device)
         main_q = self.critic(state_batch, action_batch)
         loss_critic = torch.nn.MSELoss()(q_hat, main_q)
 
@@ -254,7 +257,8 @@ class DDPGAgent(object):
 
         # Compute actor gradient estimation according to Eq.(7)
         # and replace Q-value with the critic estimation
-        loss_actor = -self.critic(state_batch, self.actor(state_batch)).mean()
+        a = self.actor(state_batch)
+        loss_actor = -self.critic(state_batch, a).mean()
 
         # Update the actor networks based on Adam
         self.actor_optimizer.zero_grad()
@@ -265,25 +269,25 @@ class DDPGAgent(object):
         self.c_loss = loss_critic.item()
         self.a_loss = loss_actor.item()
 
-        # Update the target networks
-        soft_update(self.actor, self.actor_target, self.tau)
-        soft_update(self.critic, self.critic_target, self.tau)
-
-        print('\rINFO - Step {}, c-loss: {}'.format(self.total_t, self.c_loss), end='')
-        print('\rINFO - Step {}, a-loss: {}'.format(self.total_t, self.a_loss), end='')
+        # print('\rINFO - Step {}, c-loss: {}'.format(self.total_t, self.c_loss), end='')
+        # print('\rINFO - Step {}, a-loss: {}'.format(self.total_t, self.a_loss), end='')
 
         # Update the target estimator
         if self.train_t % self.update_target_estimator_every == 0:
-            self.target_estimator = deepcopy(self.q_estimator)
-            print("\nINFO - Copied model parameters to target network.")
+            # Update the target networks
+            soft_update(self.actor, self.actor_target, self.tau)
+            soft_update(self.critic, self.critic_target, self.tau)
+
+        #     self.target_estimator = deepcopy(self.q_estimator)
+        #     print("\nINFO - Copied model parameters to target network.")
 
         self.train_t += 1
 
-        if self.save_path and self.train_t % self.save_every == 0:
-            # To preserve every checkpoint separately,
-            # add another argument to the function call parameterized by self.train_t
-            self.save_checkpoint(self.save_path)
-            print("\nINFO - Saved model checkpoint.")
+        # if self.save_path and self.train_t % self.save_every == 0:
+        # To preserve every checkpoint separately,
+        # add another argument to the function call parameterized by self.train_t
+        # self.save_checkpoint(self.save_path)
+        # print("\nINFO - Saved model checkpoint.")
 
     def feed_memory(self, state, action, reward, next_state, legal_actions, done):
         ''' Feed transition to memory
@@ -312,7 +316,7 @@ class DDPGAgent(object):
 
         return {
             'agent_type': 'DDPGAgent',
-            'q_estimator': self.q_estimator.checkpoint_attributes(),
+            # 'q_estimator': self.q_estimator.checkpoint_attributes(),
             'memory': self.memory.checkpoint_attributes(),
             'total_t': self.total_t,
             'train_t': self.train_t,
@@ -491,7 +495,6 @@ class Actor(nn.Module):
         self.post_dense = mlp(sizes_post, output_activation=output_activation)
 
     def forward(self, obs_batch):
-        obs_batch = torch.from_numpy(obs_batch).float().to('cuda:0')
         out = self.prev_dense(obs_batch)
         out = self.post_dense(out)
         return out
@@ -512,17 +515,9 @@ class Critic(nn.Module):
         self.post_dense = mlp(sizes_post)
 
     def forward(self, obs_batch, action_batch):
-        obs = torch.from_numpy(obs_batch).float().to('cuda:0')
-
-        # if action_batch.dtype != torch.float32:
-        #     action_batch = torch.from_numpy(action_batch).float().to('cuda:0')
-        # print(type(obs))
-        # print(type(action_batch))
-        out = torch.cat((obs, action_batch), dim=-1)
+        out = torch.cat((obs_batch, action_batch), dim=-1)
         out = self.prev_dense(out)
-
         out = self.post_dense(out)
-        out = out.cpu().numpy()
         return out
 
 
