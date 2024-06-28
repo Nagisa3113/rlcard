@@ -8,7 +8,7 @@ import torch
 from tensorboardX import SummaryWriter
 
 import rlcard
-from rlcard.agents import RandomAgent
+from rlcard.agents import RandomAgent, NFSPAgent
 from rlcard.agents.ddpg_agent import DDPGAgent
 from rlcard.utils import (
     get_device,
@@ -38,51 +38,21 @@ def train(args):
         }
     )
 
-    # Initialize the agent and use random agents as opponents
-    if args.algorithm == 'dqn':
-        from rlcard.agents import DQNAgent
-        if args.load_checkpoint_path != "":
-            agent = DQNAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-        else:
-            agent = DQNAgent(
-                num_actions=env.num_actions,
-                state_shape=env.state_shape[0],
-                mlp_layers=[256, 256],
-                device=device,
-                save_path=args.log_dir,
-                save_every=args.save_every
-            )
+    if args.load_checkpoint_path != "":
+        agent = NFSPAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
+    else:
+        agent = NFSPAgent(
+            num_actions=env.num_actions,
+            state_shape=env.state_shape[0],
+            hidden_layers_sizes=[256, 256],
+            q_mlp_layers=[128, 128],
+            device=device,
+            save_path=args.log_dir,
+            save_every=args.save_every
+        )
 
-    elif args.algorithm == 'nfsp':
-        from rlcard.agents import NFSPAgent
-        if args.load_checkpoint_path != "":
-            agent = NFSPAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-        else:
-            agent = NFSPAgent(
-                num_actions=env.num_actions,
-                state_shape=env.state_shape[0],
-                hidden_layers_sizes=[64, 64],
-                q_mlp_layers=[64, 64],
-                device=device,
-                save_path=args.log_dir,
-                save_every=args.save_every
-            )
-
-    elif args.algorithm == 'ddpg':
-        if args.load_checkpoint_path != "":
-            agent = DDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-        else:
-            agent = DDPGAgent(
-                num_actions=env.num_actions,
-                state_shape=env.state_shape[0],
-                hidden_layers_sizes=[256, 256],
-                q_mlp_layers=[128, 128],
-                device=device,
-                save_path=args.log_dir,
-                save_every=args.save_every
-            )
-
-    agents = []
+    agents = [agent, RandomAgent(num_actions=env.num_actions),
+              agent, RandomAgent(num_actions=env.num_actions)]
     for _ in range(0, env.num_players):
         # agents.append(RandomAgent(num_actions=env.num_actions))
         agents.append(agent)
@@ -97,7 +67,7 @@ def train(args):
     eval_env.set_agents([
         agent,
         RandomAgent(num_actions=env.num_actions),
-        agent,
+        RandomAgent(num_actions=env.num_actions),
         RandomAgent(num_actions=env.num_actions),
     ])
 
@@ -119,9 +89,8 @@ def train(args):
             # Feed transitions into agent memory, and train the agent
             # Here, we assume that DQN always plays the first position
             # and the other players play randomly (if any)
-            for ts in trajectories:
-                for t in ts:
-                    agent.feed(t)
+            for ts in trajectories[0]:
+                agent.feed(ts)
 
             # writer.add_scalars('loss', global_step=episode,
             #                    tag_scalar_dict={'actor': agent.a_loss, 'critic': agent.c_loss})
@@ -170,8 +139,8 @@ if __name__ == '__main__':
         '--algorithm',
         type=str,
         # default='ddpg',
-        default='dqn',
-        # default='nfsp',
+        # default='dqn',
+        default='nfsp',
         choices=[
             'dqn',
             'nfsp',

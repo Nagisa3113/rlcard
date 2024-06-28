@@ -15,7 +15,7 @@ from rlcard.utils.utils import remove_illegal
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state', 'done', 'legal_actions'])
 
 
-class DDPGAgent(object):
+class MADDPGAgent(object):
     '''
     Approximate clone of rlcard.agents.dqn_agent.DQNAgent
     that depends on PyTorch instead of Tensorflow
@@ -113,11 +113,11 @@ class DDPGAgent(object):
         self.output_activation = 'softmax'
 
         self.actor = Actor(self.obs_dim, self.act_dim, self.output_activation).to(self.device)
-        self.critic = Critic(self.obs_dim, self.act_dim).to(self.device)
+        self.critic = Critic(4 * self.obs_dim, 4 * self.act_dim).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr)
         self.actor_target = Actor(self.obs_dim, self.act_dim, self.output_activation).to(self.device)
-        self.critic_target = Critic(self.obs_dim, self.act_dim).to(self.device)
+        self.critic_target = Critic(4 * self.obs_dim, 4 * self.act_dim).to(self.device)
         self.memory = Memory(memory_size=1e5, batch_size=64)
         hard_update(self.actor, self.actor_target)
         hard_update(self.critic, self.critic_target)
@@ -206,21 +206,41 @@ class DDPGAgent(object):
             loss (float): The loss of the current batch.
         '''
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, legal_actions_batch = self.memory.sample()
+        state_batch1, action_batch1, reward_batch1, next_state_batch1, done_batch1, legal_actions_batch1 = self.memory.sample()
+        state_batch2, action_batch2, reward_batch2, next_state_batch2, done_batch2, legal_actions_batch2 = self.memory.sample()
+        state_batch3, action_batch3, reward_batch3, next_state_batch3, done_batch3, legal_actions_batch3 = self.memory.sample()
 
         state_batch = torch.Tensor(state_batch).to(self.device)
+        state_batch1 = torch.Tensor(state_batch1).to(self.device)
+        state_batch2 = torch.Tensor(state_batch2).to(self.device)
+        state_batch3 = torch.Tensor(state_batch3).to(self.device)
         action_batch = torch.Tensor(action_batch).to(self.device)
         reward_batch = torch.Tensor(reward_batch).reshape(-1, 1).to(self.device)
         next_state_batch = torch.Tensor(next_state_batch).to(self.device)
+        next_state_batch1 = torch.Tensor(next_state_batch1).to(self.device)
+        next_state_batch2 = torch.Tensor(next_state_batch2).to(self.device)
+        next_state_batch3 = torch.Tensor(next_state_batch3).to(self.device)
         done_batch = torch.Tensor(done_batch).reshape(-1, 1).to(self.device)
 
         with torch.no_grad():
             target_next_actions = self.actor_target(next_state_batch)
-            target_next_q = self.critic_target(next_state_batch, target_next_actions)
+            target_next_actions1 = self.actor_target(next_state_batch1)
+            target_next_actions2 = self.actor_target(next_state_batch2)
+            target_next_actions3 = self.actor_target(next_state_batch3)
+            tnas = torch.cat((target_next_actions, target_next_actions1, target_next_actions2, target_next_actions3),
+                             dim=-1)
+            nsb = torch.cat((next_state_batch, next_state_batch1, next_state_batch2, next_state_batch3), dim=-1)
+            target_next_q = self.critic_target(nsb, tnas)
             q_hat = reward_batch + self.gamma * target_next_q * (1 - done_batch)
 
         # Compute critic gradient estimation according to Eq.(8)
         action_batch = torch.Tensor(action_batch).to(self.device)
-        main_q = self.critic(state_batch, action_batch)
+        action_batch1 = torch.Tensor(action_batch1).to(self.device)
+        action_batch2 = torch.Tensor(action_batch2).to(self.device)
+        action_batch3 = torch.Tensor(action_batch3).to(self.device)
+        ab = torch.cat((action_batch, action_batch1, action_batch2, action_batch3), dim=-1)
+        sb = torch.cat((state_batch, state_batch1, state_batch2, state_batch3), dim=-1)
+        main_q = self.critic(sb, ab)
         loss_critic = torch.nn.MSELoss()(q_hat, main_q)
 
         # Update the critic networks based on Adam
@@ -231,8 +251,13 @@ class DDPGAgent(object):
 
         # Compute actor gradient estimation according to Eq.(7)
         # and replace Q-value with the critic estimation
-        a = self.actor(state_batch)
-        loss_actor = -self.critic(state_batch, a).mean()
+        t_actions = self.actor(next_state_batch)
+        t_actions1 = self.actor(next_state_batch1)
+        t_actions2 = self.actor(next_state_batch2)
+        t_actions3 = self.actor(next_state_batch3)
+        a = torch.cat((t_actions, t_actions1, t_actions2, t_actions3),
+                      dim=-1)
+        loss_actor = -self.critic(sb, a).mean()
 
         # Update the actor networks based on Adam
         self.actor_optimizer.zero_grad()
@@ -395,7 +420,11 @@ class Memory(object):
         '''
         samples = random.sample(self.memory, self.batch_size)
         samples = tuple(zip(*samples))
-        return tuple(map(np.array, samples[:-1])) + (samples[-1],)
+        a = map(np.array, samples[:-1])
+        ma = tuple(a)
+        mb = (samples[-1],)
+        mc = ma + mb
+        return mc
 
     def checkpoint_attributes(self):
         ''' Returns the attributes that need to be checkpointed
@@ -482,7 +511,6 @@ class Critic(nn.Module):
         self.act_dim = act_dim
 
         sizes_prev = [obs_dim + act_dim, HIDDEN_SIZE]
-
         sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, 1]
 
         self.prev_dense = mlp(sizes_prev)

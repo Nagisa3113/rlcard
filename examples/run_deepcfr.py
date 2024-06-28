@@ -8,13 +8,14 @@ from rlcard.agents import (
     CFRAgent,
     RandomAgent,
 )
+from rlcard.agents.deep_cfr_agent import DeepCFRAgent
 from rlcard.utils import (
     set_seed,
     tournament,
     Logger,
     plot_curve,
 )
-
+import tensorflow as tf
 
 def train(args):
     # Make environments, CFR only supports Leduc Holdem
@@ -34,16 +35,23 @@ def train(args):
 
     # Seed numpy, torch, random
     set_seed(args.seed)
+    sess = tf.compat.v1.InteractiveSession()
 
-    # Initilize CFR Agent
-    agent = CFRAgent(
-        env,
-        os.path.join(
-            args.log_dir,
-            'cfr_model',
-        ),
-    )
-    agent.load()  # If we have saved model, we first load the model
+    agent = DeepCFRAgent(session=sess,
+                    scope='deepcfr',
+                    env=env,
+                    policy_network_layers=(4, 4),
+                    advantage_network_layers=(4, 4),
+                    num_traversals=1,
+                    num_step=1,
+                    learning_rate=1e-4,
+                    batch_size_advantage=10,
+                    batch_size_strategy=10,
+                    memory_capacity=int(1e7))
+
+
+
+    # agent.load()  # If we have saved model, we first load the model
 
     # Evaluate CFR against random
     eval_env.set_agents([
@@ -74,6 +82,8 @@ def train(args):
     # Plot the learning curve
     plot_curve(csv_path, fig_path, 'cfr')
 
+    sess.close()
+    tf.reset_default_graph()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("CFR example in RLCard")
