@@ -65,8 +65,8 @@ class MADeepCFRAgent():
                  env,
                  policy_network_layers=(256, 256),
                  advantage_network_layers=(128, 128),
-                 num_iterations: int = 100,
-                 num_traversals: int = 20,
+                 num_iterations: int = 10,
+                 num_traversals: int = 2,
                  learning_rate: float = 1e-4,
                  batch_size_advantage=None,
                  batch_size_strategy=None,
@@ -127,16 +127,20 @@ class MADeepCFRAgent():
         self._advantage_memories = [
             ReservoirBuffer(memory_capacity) for _ in range(self._num_players)
         ]
-        self._advantage_networks = [
-            MLP(self._embedding_size, list(advantage_network_layers),
-                self._num_actions).to(self.device) for _ in range(self._num_players)
-        ]
-        self._loss_advantages = nn.MSELoss(reduction="mean")
-        self._optimizer_advantages = []
-        for p in range(self._num_players):
-            self._optimizer_advantages.append(
-                torch.optim.Adam(
-                    self._advantage_networks[p].parameters(), lr=learning_rate))
+        # self._advantage_networks = [
+        #     MLP(self._embedding_size, list(advantage_network_layers),
+        #         self._num_actions).to(self.device) for _ in range(self._num_players)
+        # ]
+        # # self._loss_advantages = nn.MSELoss(reduction="mean")
+        # self._optimizer_advantages = []
+        # for p in range(self._num_players):
+        #     self._optimizer_advantages.append(
+        #         torch.optim.Adam(
+        #             self._advantage_networks[p].parameters(), lr=learning_rate))
+        self._advantage_network = MLP(self._embedding_size * 4, list(advantage_network_layers),
+                                      self._num_actions).to(self.device)
+        self._loss_advantage = nn.MSELoss(reduction="mean")
+        self._optimizer_advantage = torch.optim.Adam(self._advantage_network.parameters(), lr=learning_rate)
         self._learning_rate = learning_rate
 
     @property
@@ -172,23 +176,26 @@ class MADeepCFRAgent():
             each player during each iteration.
           3. (float) Policy loss.
         """
-        advantage_losses = collections.defaultdict(list)
-        init_state, init_player = self._env.reset()
-        self._root_node = init_state
+        advantage_loss = []
+        # init_state, init_player = self._env.reset()
+        # self._root_node = init_state
         for _ in range(self._num_iterations):
             for p in range(self._num_players):
                 for _ in range(self._num_traversals):
+                    init_state, init_player = self._env.reset()
+                    self._root_node = init_state
                     self._traverse_game_tree(self._root_node, p)
-                if self._reinitialize_advantage_networks:
-                    # Re-initialize advantage network for player and train from scratch.
-                    self.reinitialize_advantage_network(p)
+                # if self._reinitialize_advantage_networks:
+                # Re-initialize advantage network for player and train from scratch.
+                # self.reinitialize_advantage_network(p)
                 # Re-initialize advantage networks and train from scratch.
-                advantage_losses[p].append(self._learn_advantage_network(p))
+                pass
+            advantage_loss.append(self._learn_advantage_network())
             self._iteration += 1
 
         # Train policy network.
         policy_loss = self._learn_strategy_network()
-        return self._policy_network, advantage_losses, policy_loss
+        return self._policy_network, advantage_loss, policy_loss
 
     def eval_step(self, state):
         ''' Predict the action given state for evaluation
@@ -232,7 +239,7 @@ class MADeepCFRAgent():
         if current_player == player:
             sampled_regret = collections.defaultdict(float)
             # Update the policy over the info set & actions via regret matching.
-            _, strategy = self._sample_action_from_advantage(state, player)
+            _, strategy = self._sample_action_from_advantage(self._env, state, player)
             for action in actions:
                 child_state, child = self._env.step(action)
                 expected_payoff[action] = self._traverse_game_tree(child_state, player)
@@ -256,7 +263,7 @@ class MADeepCFRAgent():
             return cfv
         else:
             other_player = current_player
-            _, strategy = self._sample_action_from_advantage(state, other_player)
+            _, strategy = self._sample_action_from_advantage(self._env, state, other_player)
             # Recompute distribution for numerical errors.
             probs = np.array(strategy)
             probs /= probs.sum()
@@ -264,11 +271,10 @@ class MADeepCFRAgent():
             self._strategy_memories.add(
                 StrategyMemory(
                     state['obs'].flatten(), self._iteration, strategy))
-
             child_state, _ = self._env.step(sampled_action)
             return self._traverse_game_tree(child_state, player)
 
-    def _sample_action_from_advantage(self, state, player):
+    def _sample_action_from_advantage(self, env, state, player):
         """Returns an info state policy by applying regret-matching.
 
         Args:
@@ -279,11 +285,22 @@ class MADeepCFRAgent():
           1. (list) Advantage values for info state actions indexed by action.
           2. (list) Matched regrets, prob for actions indexed by action.
         """
+
+        state1 = env.get_state((player + 1) % 4)
+        state2 = env.get_state((player + 2) % 4)
+        state3 = env.get_state((player + 3) % 4)
+        info_state1 = state1['obs'].flatten()
+        info_state2 = state2['obs'].flatten()
+        info_state3 = state3['obs'].flatten()
+
         info_state = state['obs'].flatten()
         legal_actions = state['legal_actions']
+
+        state_tensors = np.concatenate((info_state, info_state1, info_state2, info_state3), axis=0)
+
         with torch.no_grad():
-            state_tensor = torch.FloatTensor(np.expand_dims(info_state, axis=0)).to(self.device)
-            raw_advantages = self._advantage_networks[player](state_tensor).cpu().detach().numpy()[0]
+            state_tensors = torch.FloatTensor(np.expand_dims(state_tensors, axis=0)).to(self.device)
+            raw_advantages = self._advantage_network(state_tensors).cpu().detach().numpy()[0]
         advantages = [max(0., advantage) for advantage in raw_advantages]
         cumulative_regret = np.sum([advantages[action] for action in legal_actions])
         matched_regrets = np.array([0.] * self._num_actions)
@@ -328,7 +345,7 @@ class MADeepCFRAgent():
         return probs
         # {action: probs[0][action] for action in legal_actions}
 
-    def _learn_advantage_network(self, player):
+    def _learn_advantage_network(self):
         """Compute the loss on sampled transitions and perform a Q-network update.
 
         If there are not enough elements in the buffer, no loss is computed and
@@ -340,6 +357,7 @@ class MADeepCFRAgent():
         Returns:
           (float) The average loss over the advantage network.
         """
+        player = 0
         for _ in range(self._advantage_network_train_steps):
 
             if self._batch_size_advantage:
@@ -350,27 +368,63 @@ class MADeepCFRAgent():
                     self._batch_size_advantage)
             else:
                 samples = self._advantage_memories[player]
+
+            if self._batch_size_advantage:
+                if self._batch_size_advantage > len(self._advantage_memories[(player + 1) % 4]):
+                    ## Skip if there aren't enough samples
+                    return None
+                samples1 = self._advantage_memories[(player + 1) % 4].sample(
+                    self._batch_size_advantage)
+            else:
+                samples1 = self._advantage_memories[(player + 1) % 4]
+
+            if self._batch_size_advantage:
+                if self._batch_size_advantage > len(self._advantage_memories[(player + 2) % 4]):
+                    ## Skip if there aren't enough samples
+                    return None
+                samples2 = self._advantage_memories[(player + 2) % 4].sample(
+                    self._batch_size_advantage)
+            else:
+                samples2 = self._advantage_memories[(player + 2) % 4]
+
+            if self._batch_size_advantage:
+                if self._batch_size_advantage > len(self._advantage_memories[(player + 3) % 4]):
+                    ## Skip if there aren't enough samples
+                    return None
+                samples3 = self._advantage_memories[(player + 3) % 4].sample(
+                    self._batch_size_advantage)
+            else:
+                samples3 = self._advantage_memories[(player + 3) % 4]
+
             info_states = []
             advantages = []
             iterations = []
-            for s in samples:
-                info_states.append(s.info_state)
+
+            if len(samples) == 0 or len(samples2) == 0 or len(samples3) == 0 or len(samples1) == 0:
+                return None
+
+            for s, s1, s2, s3 in zip(samples, samples1, samples2, samples3):
+                iss = np.concatenate((s.info_state, s1.info_state, s2.info_state, s3.info_state), axis=0)
+                info_states.append(iss)
                 advantages.append(s.advantage)
                 iterations.append([s.iteration])
             # Ensure some samples have been gathered.
             if not info_states:
                 return None
-            self._optimizer_advantages[player].zero_grad()
+
+            self._optimizer_advantage.zero_grad()
             advantages = torch.FloatTensor(np.array(advantages)).to(self.device)
             iters = torch.FloatTensor(np.sqrt(np.array(iterations))).to(self.device)
             infos = torch.FloatTensor(np.array(info_states)).to(self.device)
-            outputs = self._advantage_networks[player](infos)
-            loss_advantages = self._loss_advantages(iters * outputs,
-                                                    iters * advantages)
-            loss_advantages.backward()
-            self._optimizer_advantages[player].step()
 
-        return loss_advantages.cpu().detach().numpy()
+            outputs = self._advantage_network(infos)
+
+            loss_advantage = self._loss_advantage(iters * outputs,
+                                                  iters * advantages)
+            loss_advantage.backward()
+            self._optimizer_advantage.step()
+
+        return loss_advantage.cpu().detach().numpy()
 
     def _learn_strategy_network(self):
         """Compute the loss over the strategy network.

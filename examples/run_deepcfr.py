@@ -48,8 +48,8 @@ def train(args):
         num_iterations=20,
         num_traversals=10,
         learning_rate=1e-3,
-        batch_size_advantage=256,
-        batch_size_strategy=256,
+        batch_size_advantage=None,
+        batch_size_strategy=None,
         memory_capacity=1e7)
 
     # agent.load()  # If we have saved model, we first load the model

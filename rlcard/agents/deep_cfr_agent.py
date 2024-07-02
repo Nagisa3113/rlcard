@@ -173,15 +173,16 @@ class DeepCFRAgent():
           3. (float) Policy loss.
         """
         advantage_losses = collections.defaultdict(list)
-        init_state, init_player = self._env.reset()
-        self._root_node = init_state
+
         for _ in range(self._num_iterations):
             for p in range(self._num_players):
                 for _ in range(self._num_traversals):
+                    init_state, init_player = self._env.reset()
+                    self._root_node = init_state
                     self._traverse_game_tree(self._root_node, p)
-                if self._reinitialize_advantage_networks:
-                    # Re-initialize advantage network for player and train from scratch.
-                    self.reinitialize_advantage_network(p)
+                # if self._reinitialize_advantage_networks:
+                # Re-initialize advantage network for player and train from scratch.
+                # self.reinitialize_advantage_network(p)
                 # Re-initialize advantage networks and train from scratch.
                 advantage_losses[p].append(self._learn_advantage_network(p))
             self._iteration += 1
