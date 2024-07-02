@@ -71,8 +71,8 @@ class DeepCFRAgent():
                  batch_size_advantage=None,
                  batch_size_strategy=None,
                  memory_capacity: int = int(1e6),
-                 policy_network_train_steps: int = 10,
-                 advantage_network_train_steps: int = 10,
+                 policy_network_train_steps: int = 1,
+                 advantage_network_train_steps: int = 1,
                  reinitialize_advantage_networks: bool = True):
         """Initialize the Deep CFR algorithm.
 
@@ -128,7 +128,7 @@ class DeepCFRAgent():
             ReservoirBuffer(memory_capacity) for _ in range(self._num_players)
         ]
         self._advantage_networks = [
-            MLP(self._embedding_size, list(advantage_network_layers),
+            MLP(self._embedding_size * len(self._num_players), list(advantage_network_layers),
                 self._num_actions).to(torch.device('cuda:0')) for _ in range(self._num_players)
         ]
         self._loss_advantages = nn.MSELoss(reduction="mean")

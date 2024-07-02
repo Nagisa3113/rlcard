@@ -95,22 +95,11 @@ def train(args):
                     agent.feed(s)
                 # agent.feed(ts)
 
-            # writer.add_scalars('loss', global_step=episode,
-            #                    tag_scalar_dict={'actor': agent.a_loss, 'critic': agent.c_loss})
-
             # Evaluate the performance. Play with random agents.
             if episode > 0 and episode % args.evaluate_every == 0:
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
                 writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-            #     logger.log_performance(
-            #         episode,
-            #         tournament(
-            #             env,
-            #             args.num_eval_games,
-            #         )[0]a
-            #     )
-            #
 
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
@@ -161,7 +150,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=50000,
+        default=20000,
     )
     parser.add_argument(
         '--num_eval_games',

@@ -43,13 +43,13 @@ def train(args):
 
     agent = DeepCFRAgent(
         env,
-        policy_network_layers=(128, 128),
-        advantage_network_layers=(128, 128),
-        num_iterations=20,
-        num_traversals=10,
+        policy_network_layers=(64, 64),
+        advantage_network_layers=(64, 64),
+        num_iterations=200,
+        num_traversals=100,
         learning_rate=1e-3,
-        batch_size_advantage=256,
-        batch_size_strategy=256,
+        batch_size_advantage=None,
+        batch_size_strategy=None,
         memory_capacity=1e7)
 
     # agent.load()  # If we have saved model, we first load the model
@@ -73,7 +73,7 @@ def train(args):
                 # agent.save()  # Save model
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 10)
+                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
     # Plot the learning curve
