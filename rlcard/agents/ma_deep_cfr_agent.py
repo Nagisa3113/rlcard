@@ -47,7 +47,7 @@ StrategyMemory = collections.namedtuple(
     "StrategyMemory", "info_state iteration strategy_action_probs")
 
 
-class DeepCFRAgent():
+class MADeepCFRAgent():
     """Implements a solver for the Deep CFR Algorithm with PyTorch.
 
     See https://arxiv.org/abs/1811.00164.
@@ -109,16 +109,16 @@ class DeepCFRAgent():
         self._num_actions = self._env.num_actions
         self._iteration = 1
         self.use_raw = True
-        self.device = torch.device('cuda:0')
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         # Define strategy network, loss & memory.
         self._strategy_memories = ReservoirBuffer(memory_capacity)
         self._policy_network = MLP(self._embedding_size,
                                    list(policy_network_layers),
-                                   self._num_actions).to(torch.device('cuda:0'))
+                                   self._num_actions).to(self.device)
         # Illegal actions are handled in the traversal code where expected payoff
         # and sampled regret is computed from the advantage networks.
-        self._policy_sm = nn.Softmax(dim=-1).to(torch.device('cuda:0'))
+        self._policy_sm = nn.Softmax(dim=-1).to(self.device)
         self._loss_policy = nn.MSELoss()
         self._optimizer_policy = torch.optim.Adam(
             self._policy_network.parameters(), lr=learning_rate)
@@ -128,8 +128,8 @@ class DeepCFRAgent():
             ReservoirBuffer(memory_capacity) for _ in range(self._num_players)
         ]
         self._advantage_networks = [
-            MLP(self._embedding_size * len(self._num_players), list(advantage_network_layers),
-                self._num_actions).to(torch.device('cuda:0')) for _ in range(self._num_players)
+            MLP(self._embedding_size, list(advantage_network_layers),
+                self._num_actions).to(self.device) for _ in range(self._num_players)
         ]
         self._loss_advantages = nn.MSELoss(reduction="mean")
         self._optimizer_advantages = []
@@ -282,7 +282,7 @@ class DeepCFRAgent():
         info_state = state['obs'].flatten()
         legal_actions = state['legal_actions']
         with torch.no_grad():
-            state_tensor = torch.FloatTensor(np.expand_dims(info_state, axis=0)).to(torch.device('cuda:0'))
+            state_tensor = torch.FloatTensor(np.expand_dims(info_state, axis=0)).to(self.device)
             raw_advantages = self._advantage_networks[player](state_tensor).cpu().detach().numpy()[0]
         advantages = [max(0., advantage) for advantage in raw_advantages]
         cumulative_regret = np.sum([advantages[action] for action in legal_actions])
@@ -361,9 +361,9 @@ class DeepCFRAgent():
             if not info_states:
                 return None
             self._optimizer_advantages[player].zero_grad()
-            advantages = torch.FloatTensor(np.array(advantages)).to(torch.device('cuda:0'))
-            iters = torch.FloatTensor(np.sqrt(np.array(iterations))).to(torch.device('cuda:0'))
-            infos = torch.FloatTensor(np.array(info_states)).to(torch.device('cuda:0'))
+            advantages = torch.FloatTensor(np.array(advantages)).to(self.device)
+            iters = torch.FloatTensor(np.sqrt(np.array(iterations))).to(self.device)
+            infos = torch.FloatTensor(np.array(info_states)).to(self.device)
             outputs = self._advantage_networks[player](infos)
             loss_advantages = self._loss_advantages(iters * outputs,
                                                     iters * advantages)
@@ -395,9 +395,9 @@ class DeepCFRAgent():
                 iterations.append([s.iteration])
 
             self._optimizer_policy.zero_grad()
-            iters = torch.FloatTensor(np.sqrt(np.array(iterations))).to(torch.device('cuda:0'))
-            ac_probs = torch.FloatTensor(np.array(np.squeeze(action_probs))).to(torch.device('cuda:0'))
-            logits = self._policy_network(torch.FloatTensor(np.array(info_states)).to(torch.device('cuda:0')))
+            iters = torch.FloatTensor(np.sqrt(np.array(iterations))).to(self.device)
+            ac_probs = torch.FloatTensor(np.array(np.squeeze(action_probs))).to(self.device)
+            logits = self._policy_network(torch.FloatTensor(np.array(info_states)).to(self.device))
             outputs = self._policy_sm(logits)
             loss_strategy = self._loss_policy(iters * outputs, iters * ac_probs)
             loss_strategy.backward()
@@ -456,8 +456,8 @@ class SonnetLinear(nn.Module):
                     upper,
                     loc=mean,
                     scale=stddev,
-                    size=[self._out_size, self._in_size]))).to(torch.device('cuda:0'))
-        self._bias = nn.Parameter(torch.zeros([self._out_size]).to(torch.device('cuda:0')))
+                    size=[self._out_size, self._in_size])))
+        self._bias = nn.Parameter(torch.zeros([self._out_size]))
 
 
 class MLP(nn.Module):

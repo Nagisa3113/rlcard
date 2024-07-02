@@ -9,7 +9,6 @@ from tensorboardX import SummaryWriter
 
 import rlcard
 from rlcard.agents import RandomAgent
-from rlcard.agents.ddpg_agent import DDPGAgent
 from rlcard.agents.maddpg_agent import MADDPGAgent
 from rlcard.utils import (
     get_device,

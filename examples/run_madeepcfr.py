@@ -9,7 +9,7 @@ import rlcard
 from rlcard.agents import (
     RandomAgent,
 )
-from rlcard.agents.deep_cfr_agent import DeepCFRAgent
+from rlcard.agents.ma_deep_cfr_agent import MADeepCFRAgent
 from rlcard.utils import (
     set_seed,
     tournament,
@@ -41,7 +41,7 @@ def train(args):
     # Seed numpy, torch, random
     set_seed(args.seed)
 
-    agent = DeepCFRAgent(
+    agent = MADeepCFRAgent(
         env,
         policy_network_layers=(64, 64),
         advantage_network_layers=(64, 64),
