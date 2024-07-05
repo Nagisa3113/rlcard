@@ -45,7 +45,7 @@ def train(args):
             num_actions=env.num_actions,
             state_shape=env.state_shape[0],
             hidden_layers_sizes=[256, 256],
-            q_mlp_layers=[128, 128],
+            q_mlp_layers=[256, 256],
             device=device,
             save_path=args.log_dir,
             save_every=args.save_every
@@ -92,9 +92,6 @@ def train(args):
             for ts in trajectories[0]:
                 agent.feed(ts)
 
-            # writer.add_scalars('loss', global_step=episode,
-            #                    tag_scalar_dict={'actor': agent.a_loss, 'critic': agent.c_loss})
-
             writer.add_scalar('reward', payoffs[0], global_step=episode)
 
             # Evaluate the performance. Play with random agents.
@@ -102,14 +99,6 @@ def train(args):
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
                 writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-            #     logger.log_performance(
-            #         episode,
-            #         tournament(
-            #             env,
-            #             args.num_eval_games,
-            #         )[0]a
-            #     )
-            #
 
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path

@@ -50,8 +50,8 @@ class DQNAgent(object):
                  epsilon_start=1.0,
                  epsilon_end=0.01,
                  epsilon_decay_steps=20000,
-                 batch_size=64,
-                 num_actions=2,
+                 batch_size=128,
+                 num_actions=4,
                  state_shape=None,
                  train_every=10,
                  mlp_layers=None,
@@ -222,20 +222,19 @@ class DQNAgent(object):
         state_batch = np.array(state_batch)
 
         loss = self.q_estimator.update(state_batch, action_batch, target_batch)
-        print('\rINFO - Step {}, rl-loss: {}'.format(self.total_t, loss), end='')
+        # print('\rINFO - Step {}, rl-loss: {}'.format(self.total_t, loss), end='')
 
         # Update the target estimator
         if self.train_t % self.update_target_estimator_every == 0:
             self.target_estimator = deepcopy(self.q_estimator)
-            print("\nINFO - Copied model parameters to target network.")
 
         self.train_t += 1
 
-        if self.save_path and self.train_t % self.save_every == 0:
-            # To preserve every checkpoint separately, 
-            # add another argument to the function call parameterized by self.train_t
-            self.save_checkpoint(self.save_path)
-            print("\nINFO - Saved model checkpoint.")
+        # if self.save_path and self.train_t % self.save_every == 0:
+        # To preserve every checkpoint separately,
+        # add another argument to the function call parameterized by self.train_t
+        # self.save_checkpoint(self.save_path)
+        # print("\nINFO - Saved model checkpoint.")
 
     def feed_memory(self, state, action, reward, next_state, legal_actions, done):
         ''' Feed transition to memory

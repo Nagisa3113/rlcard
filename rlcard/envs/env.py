@@ -104,6 +104,7 @@ class Env(object):
         if not self.game.step_back():
             return False
 
+        self.timestep -= 1
         player_id = self.get_player_id()
         state = self.get_state(player_id)
 

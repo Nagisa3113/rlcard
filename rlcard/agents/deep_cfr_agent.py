@@ -234,7 +234,10 @@ class DeepCFRAgent():
             sampled_regret = collections.defaultdict(float)
             # Update the policy over the info set & actions via regret matching.
             _, strategy = self._sample_action_from_advantage(state, player)
+            cur_step = self._env.timestep
             for action in actions:
+                while self._env.timestep != cur_step:
+                    self._env.step_back()
                 child_state, child = self._env.step(action)
                 expected_payoff[action] = self._traverse_game_tree(child_state, player)
                 self._env.step_back()

@@ -71,8 +71,8 @@ class MADeepCFRAgent():
                  batch_size_advantage=None,
                  batch_size_strategy=None,
                  memory_capacity: int = int(1e6),
-                 policy_network_train_steps: int = 1,
-                 advantage_network_train_steps: int = 1,
+                 policy_network_train_steps: int = 4,
+                 advantage_network_train_steps: int = 4,
                  reinitialize_advantage_networks: bool = True):
         """Initialize the Deep CFR algorithm.
 
@@ -189,7 +189,6 @@ class MADeepCFRAgent():
                 # Re-initialize advantage network for player and train from scratch.
                 # self.reinitialize_advantage_network(p)
                 # Re-initialize advantage networks and train from scratch.
-                pass
             advantage_loss.append(self._learn_advantage_network())
             self._iteration += 1
 
@@ -240,7 +239,10 @@ class MADeepCFRAgent():
             sampled_regret = collections.defaultdict(float)
             # Update the policy over the info set & actions via regret matching.
             _, strategy = self._sample_action_from_advantage(self._env, state, player)
+            cur_step = self._env.timestep
             for action in actions:
+                while self._env.timestep != cur_step:
+                    self._env.step_back()
                 child_state, child = self._env.step(action)
                 expected_payoff[action] = self._traverse_game_tree(child_state, player)
                 self._env.step_back()
@@ -366,34 +368,25 @@ class MADeepCFRAgent():
                     return None
                 samples = self._advantage_memories[player].sample(
                     self._batch_size_advantage)
-            else:
-                samples = self._advantage_memories[player]
-
-            if self._batch_size_advantage:
                 if self._batch_size_advantage > len(self._advantage_memories[(player + 1) % 4]):
                     ## Skip if there aren't enough samples
                     return None
                 samples1 = self._advantage_memories[(player + 1) % 4].sample(
                     self._batch_size_advantage)
-            else:
-                samples1 = self._advantage_memories[(player + 1) % 4]
-
-            if self._batch_size_advantage:
                 if self._batch_size_advantage > len(self._advantage_memories[(player + 2) % 4]):
                     ## Skip if there aren't enough samples
                     return None
                 samples2 = self._advantage_memories[(player + 2) % 4].sample(
                     self._batch_size_advantage)
-            else:
-                samples2 = self._advantage_memories[(player + 2) % 4]
-
-            if self._batch_size_advantage:
                 if self._batch_size_advantage > len(self._advantage_memories[(player + 3) % 4]):
                     ## Skip if there aren't enough samples
                     return None
                 samples3 = self._advantage_memories[(player + 3) % 4].sample(
                     self._batch_size_advantage)
             else:
+                samples = self._advantage_memories[player]
+                samples1 = self._advantage_memories[(player + 1) % 4]
+                samples2 = self._advantage_memories[(player + 2) % 4]
                 samples3 = self._advantage_memories[(player + 3) % 4]
 
             info_states = []

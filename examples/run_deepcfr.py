@@ -45,11 +45,11 @@ def train(args):
         env,
         policy_network_layers=(128, 128),
         advantage_network_layers=(128, 128),
-        num_iterations=20,
-        num_traversals=10,
+        num_iterations=5,
+        num_traversals=4,
         learning_rate=1e-3,
-        batch_size_advantage=None,
-        batch_size_strategy=None,
+        batch_size_advantage=64,
+        batch_size_strategy=64,
         memory_capacity=1e7)
 
     # agent.load()  # If we have saved model, we first load the model
@@ -73,7 +73,7 @@ def train(args):
                 # agent.save()  # Save model
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 10)
+                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 5)
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
     # Plot the learning curve
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=5000,
+        default=500,
     )
     parser.add_argument(
         '--num_eval_games',
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log_dir',
         type=str,
-        default='experiments/leduc_holdem_deepcfr_result/',
+        default='experiments/result/',
     )
 
     args = parser.parse_args()

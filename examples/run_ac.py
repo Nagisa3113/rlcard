@@ -9,8 +9,7 @@ from tensorboardX import SummaryWriter
 
 import rlcard
 from rlcard.agents import RandomAgent
-from rlcard.agents.ac_agent import ActorCriticAgent, ACAgent
-from rlcard.agents.ddpg_agent import DDPGAgent
+from rlcard.agents.ac_agent import ACAgent
 from rlcard.utils import (
     get_device,
     set_seed,
@@ -50,10 +49,11 @@ def train(args):
             save_every=args.save_every
         )
 
-    agents = []
-    for _ in range(0, env.num_players):
-        # agents.append(RandomAgent(num_actions=env.num_actions))
-        agents.append(agent)
+    agents = [agent,
+              RandomAgent(num_actions=env.num_actions),
+              agent,
+              RandomAgent(num_actions=env.num_actions)
+              ]
     env.set_agents(agents)
 
     eval_env = rlcard.make(

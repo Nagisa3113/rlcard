@@ -43,13 +43,13 @@ def train(args):
 
     agent = MADeepCFRAgent(
         env,
-        policy_network_layers=(64, 64),
-        advantage_network_layers=(64, 64),
+        policy_network_layers=(256, 256),
+        advantage_network_layers=(512, 512),
         num_iterations=2,
         num_traversals=2,
         learning_rate=1e-3,
-        batch_size_advantage=None,
-        batch_size_strategy=None,
+        batch_size_advantage=256,
+        batch_size_strategy=256,
         memory_capacity=1e7)
 
     # agent.load()  # If we have saved model, we first load the model
@@ -73,11 +73,11 @@ def train(args):
                 # agent.save()  # Save model
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
+                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 5)
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
     # Plot the learning curve
-    plot_curve(csv_path, fig_path, 'cfr')
+    plot_curve(csv_path, fig_path, 'macfr')
 
 
 if __name__ == '__main__':
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        default='deepcfr',
+        default='madeepcfr',
         # default='dqn',
         # default='nfsp',
         choices=[
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log_dir',
         type=str,
-        default='experiments/leduc_holdem_deepcfr_result/',
+        default='experiments/result/',
     )
 
     args = parser.parse_args()

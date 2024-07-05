@@ -53,35 +53,6 @@ def train(args):
                 save_every=args.save_every
             )
 
-    elif args.algorithm == 'nfsp':
-        from rlcard.agents import NFSPAgent
-        if args.load_checkpoint_path != "":
-            agent = NFSPAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-        else:
-            agent = NFSPAgent(
-                num_actions=env.num_actions,
-                state_shape=env.state_shape[0],
-                hidden_layers_sizes=[64, 64],
-                q_mlp_layers=[64, 64],
-                device=device,
-                save_path=args.log_dir,
-                save_every=args.save_every
-            )
-
-    elif args.algorithm == 'ddpg':
-        if args.load_checkpoint_path != "":
-            agent = DDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-        else:
-            agent = DDPGAgent(
-                num_actions=env.num_actions,
-                state_shape=env.state_shape[0],
-                hidden_layers_sizes=[256, 256],
-                q_mlp_layers=[128, 128],
-                device=device,
-                save_path=args.log_dir,
-                save_every=args.save_every
-            )
-
     agents = []
     for _ in range(0, env.num_players):
         # agents.append(RandomAgent(num_actions=env.num_actions))
@@ -106,10 +77,6 @@ def train(args):
     # Start training
     with Logger(args.log_dir) as logger:
         for episode in range(args.num_episodes):
-
-            if args.algorithm == 'nfsp':
-                agents[0].sample_episode_policy()
-
             # Generate data from the environment
             trajectories, payoffs = env.run(is_training=True)
 
@@ -182,7 +149,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=2000,
+        default=1000,
     )
     parser.add_argument(
         '--evaluate_every',
