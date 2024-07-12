@@ -103,7 +103,7 @@ class ACAgent(object):
         self.device = device
         self.a_lr = 0.0001
         self.c_lr = 0.0001
-        self.batch_size = 64
+        self.batch_size = 128
         self.gamma = 0.95
         self.tau = 0.001
         self.model_episode = 0
@@ -115,7 +115,7 @@ class ACAgent(object):
         self.critic = Critic(self.obs_dim, hidden_dim=128).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.a_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr)
-        self.memory = Memory(memory_size=1e5, batch_size=64)
+        self.memory = Memory(memory_size=1e5, batch_size=128)
         self.c_loss = 0
         self.a_loss = 0
 
@@ -133,7 +133,8 @@ class ACAgent(object):
         self.total_t += 1
         tmp = self.total_t - self.replay_memory_init_size
         if tmp >= 0 and tmp % self.train_every == 0:
-            self.train()
+            if len(self.memory.memory) > self.memory.batch_size:
+                self.train()
 
     def step(self, state):
         ''' Predict the action for genrating training data but
@@ -173,7 +174,7 @@ class ACAgent(object):
         info['values'] = {state['raw_legal_actions'][i]: float(q_values[list(state['legal_actions'].keys())[i]]) for i
                           in range(len(state['legal_actions']))}
 
-        return best_action, info
+        return q_values, info
 
     def predict(self, state):
         ''' Predict the masked Q-values

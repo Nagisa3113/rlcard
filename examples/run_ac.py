@@ -28,13 +28,13 @@ def train(args):
     writer = SummaryWriter(args.log_dir)
     save_config(args, args.log_dir)
     # Seed numpy, torch, random
-    set_seed(args.seed)
+    # set_seed(args.seed)
 
     # Make the environment with seed
     env = rlcard.make(
         args.env,
         config={
-            'seed': args.seed,
+            # 'seed': args.seed,
         }
     )
 
@@ -43,23 +43,22 @@ def train(args):
         agent = ACAgent(
             num_actions=env.num_actions,
             state_shape=env.state_shape[0],
-            mlp_layers=[256, 256],
             device=device,
             save_path=args.log_dir,
             save_every=args.save_every
         )
 
     agents = [agent,
-              RandomAgent(num_actions=env.num_actions),
               agent,
-              RandomAgent(num_actions=env.num_actions)
+              agent,
+              agent,
               ]
     env.set_agents(agents)
 
     eval_env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            'seed': 0,
+            # 'seed': 0,
         }
     )
     eval_env.set_agents([
@@ -120,9 +119,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        # default='ddpg',
         default='ac',
-        # default='nfsp',
         choices=[
             'dqn',
             'nfsp',
@@ -142,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=20000,
+        default=40000,
     )
     parser.add_argument(
         '--num_eval_games',

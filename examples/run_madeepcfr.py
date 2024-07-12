@@ -24,14 +24,14 @@ def train(args):
     env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            'seed': 0,
+            # 'seed': 0,
             'allow_step_back': True,
         }
     )
     eval_env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            'seed': 0,
+            # 'seed': 0,
         }
     )
 
@@ -39,17 +39,19 @@ def train(args):
     writer = SummaryWriter(args.log_dir)
     save_config(args, args.log_dir)
     # Seed numpy, torch, random
-    set_seed(args.seed)
+    # set_seed(args.seed)
 
     agent = MADeepCFRAgent(
         env,
-        policy_network_layers=(256, 256),
-        advantage_network_layers=(512, 512),
-        num_iterations=2,
-        num_traversals=2,
-        learning_rate=1e-3,
-        batch_size_advantage=256,
-        batch_size_strategy=256,
+        policy_network_layers=(args.policy_network_layers, args.policy_network_layers),
+        advantage_network_layers=(args.advantage_network_layers, args.advantage_network_layers),
+        num_iterations=1,
+        num_traversals=1,
+        learning_rate=args.learning_rate,
+        batch_size_advantage=args.batch_size_advantage,
+        batch_size_strategy=args.batch_size_strategy,
+        policy_network_train_steps=1,
+        advantage_network_train_steps=1,
         memory_capacity=1e7)
 
     # agent.load()  # If we have saved model, we first load the model
@@ -69,6 +71,7 @@ def train(args):
             agent.solve()
             print('\rIteration {}'.format(episode), end='')
             # Evaluate the performance. Play with Random agents.
+            evey = args.evaluate_every
             if episode % args.evaluate_every == 0:
                 # agent.save()  # Save model
                 rewards = tournament(eval_env, args.num_eval_games)
@@ -104,11 +107,11 @@ if __name__ == '__main__':
             'ddpg',
         ],
     )
-    parser.add_argument(
-        '--seed',
-        type=int,
-        default=42,
-    )
+    # parser.add_argument(
+    #     '--seed',
+    #     type=int,
+    #     default=42,
+    # )
     parser.add_argument(
         '--num_episodes',
         type=int,
@@ -128,6 +131,31 @@ if __name__ == '__main__':
         '--log_dir',
         type=str,
         default='experiments/result/',
+    )
+    parser.add_argument(
+        '--policy_network_layers',
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
+        '--advantage_network_layers',
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
+        '--batch_size_advantage',
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
+        '--batch_size_strategy',
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
+        '--learning_rate',
+        type=int,
+        default=0.0003,
     )
 
     args = parser.parse_args()

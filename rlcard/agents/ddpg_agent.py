@@ -27,16 +27,13 @@ class DDPGAgent(object):
                  epsilon_start=1.0,
                  epsilon_end=0.01,
                  epsilon_decay_steps=20000,
-                 batch_size=64,
-                 num_actions=2,
+                 batch_size=128,
+                 num_actions=4,
                  train_every=10,
                  state_shape=None,
-                 mlp_layers=None,
                  learning_rate=0.0005,
                  device=None,
                  save_path=None,
-                 hidden_layers_sizes=[64, 64],
-                 q_mlp_layers=[64, 64],
                  save_every=float('inf'), ):
 
         '''
@@ -100,9 +97,9 @@ class DDPGAgent(object):
         self.obs_dim = state_shape[0]
         self.act_dim = num_actions
         self.device = device
-        self.a_lr = 0.0001
-        self.c_lr = 0.0001
-        self.batch_size = 64
+        self.a_lr = 0.0005
+        self.c_lr = 0.0005
+        self.batch_size = batch_size
         self.gamma = 0.95
         self.tau = 0.001
         self.model_episode = 0
@@ -116,7 +113,7 @@ class DDPGAgent(object):
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.c_lr)
         self.actor_target = Actor(self.obs_dim, self.act_dim, self.output_activation).to(self.device)
         self.critic_target = Critic(self.obs_dim, self.act_dim).to(self.device)
-        self.memory = Memory(memory_size=1e5, batch_size=64)
+        self.memory = Memory(memory_size=1e5, batch_size=self.batch_size)
         hard_update(self.actor, self.actor_target)
         hard_update(self.critic, self.critic_target)
         self.c_loss = 0
@@ -136,7 +133,8 @@ class DDPGAgent(object):
         self.total_t += 1
         tmp = self.total_t - self.replay_memory_init_size
         if tmp >= 0 and tmp % self.train_every == 0:
-            self.train()
+            if len(self.memory.memory) > self.memory.batch_size:
+                self.train()
 
     def step(self, state):
         ''' Predict the action for genrating training data but
@@ -176,7 +174,7 @@ class DDPGAgent(object):
         info['values'] = {state['raw_legal_actions'][i]: float(q_values[list(state['legal_actions'].keys())[i]]) for i
                           in range(len(state['legal_actions']))}
 
-        return best_action, info
+        return q_values, info
 
     def predict(self, state):
         ''' Predict the masked Q-values
@@ -453,7 +451,7 @@ class Actor(nn.Module):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
 
-        HIDDEN_SIZE = 256
+        HIDDEN_SIZE = 128
 
         sizes_prev = [obs_dim, HIDDEN_SIZE]
         middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
@@ -475,7 +473,7 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, obs_dim, act_dim):
         super().__init__()
-        HIDDEN_SIZE = 256
+        HIDDEN_SIZE = 128
         self.obs_dim = obs_dim
         self.act_dim = act_dim
 

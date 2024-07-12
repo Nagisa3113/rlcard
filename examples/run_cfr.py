@@ -3,6 +3,8 @@
 import os
 import argparse
 
+from tensorboardX import SummaryWriter
+
 import rlcard
 from rlcard.agents import (
     CFRAgent,
@@ -14,6 +16,7 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
+from utils import make_logpath
 
 
 def train(args):
@@ -31,6 +34,9 @@ def train(args):
             'seed': 0,
         }
     )
+
+    _, args.log_dir = make_logpath(args.env, args.algorithm)
+    writer = SummaryWriter(args.log_dir)
 
     # Seed numpy, torch, random
     set_seed(args.seed)
@@ -59,15 +65,19 @@ def train(args):
             agent.train()
             print('\rIteration {}'.format(episode), end='')
             # Evaluate the performance. Play with Random agents.
-            if episode % args.evaluate_every == 0:
-                agent.save()  # Save model
-                logger.log_performance(
-                    episode,
-                    tournament(
-                        eval_env,
-                        args.num_eval_games
-                    )[0]
-                )
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode * 4)
+
+            # if episode % args.evaluate_every == 0:
+            #     agent.save()  # Save model
+            #     logger.log_performance(
+            #         episode,
+            #         tournament(
+            #             eval_env,
+            #             args.num_eval_games
+            #         )[0]
+            #     )
 
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
@@ -77,6 +87,21 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("CFR example in RLCard")
+    parser.add_argument(
+        '--env',
+        type=str,
+        default='multi-leduc-holdem',
+        choices=[
+            'leduc-holdem',
+            'limit-holdem',
+            'no-limit-holdem',
+        ],
+    )
+    parser.add_argument(
+        '--algorithm',
+        type=str,
+        default='cfr',
+    )
     parser.add_argument(
         '--seed',
         type=int,

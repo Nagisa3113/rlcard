@@ -108,7 +108,7 @@ class DeepCFRAgent():
         self._reinitialize_advantage_networks = reinitialize_advantage_networks
         self._num_actions = self._env.num_actions
         self._iteration = 1
-        self.use_raw = True
+        self.use_raw = False
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         # Define strategy network, loss & memory.

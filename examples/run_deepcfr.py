@@ -43,13 +43,13 @@ def train(args):
 
     agent = DeepCFRAgent(
         env,
-        policy_network_layers=(128, 128),
-        advantage_network_layers=(128, 128),
-        num_iterations=5,
-        num_traversals=4,
-        learning_rate=1e-3,
-        batch_size_advantage=64,
-        batch_size_strategy=64,
+        policy_network_layers=(256, 256),
+        advantage_network_layers=(256, 256),
+        num_iterations=1,
+        num_traversals=1,
+        learning_rate=0.0001,
+        batch_size_advantage=256,
+        batch_size_strategy=256,
         memory_capacity=1e7)
 
     # agent.load()  # If we have saved model, we first load the model
@@ -73,7 +73,7 @@ def train(args):
                 # agent.save()  # Save model
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 5)
+                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 2)
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
     # Plot the learning curve
@@ -96,8 +96,6 @@ if __name__ == '__main__':
         '--algorithm',
         type=str,
         default='deepcfr',
-        # default='dqn',
-        # default='nfsp',
         choices=[
             'dqn',
             'nfsp',
@@ -112,7 +110,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=500,
+        default=20000,
     )
     parser.add_argument(
         '--num_eval_games',

@@ -8,7 +8,7 @@ import torch
 from tensorboardX import SummaryWriter
 
 import rlcard
-from rlcard.agents import RandomAgent
+from rlcard.agents import RandomAgent, DQNAgent
 from rlcard.agents.ddpg_agent import DDPGAgent
 from rlcard.utils import (
     get_device,
@@ -28,47 +28,44 @@ def train(args):
     writer = SummaryWriter(args.log_dir)
     save_config(args, args.log_dir)
     # Seed numpy, torch, random
-    set_seed(args.seed)
+    # set_seed(args.seed)
 
     # Make the environment with seed
     env = rlcard.make(
         args.env,
         config={
-            'seed': args.seed,
+            # 'seed': args.seed,
         }
     )
 
-    # Initialize the agent and use random agents as opponents
-    if args.algorithm == 'dqn':
-        from rlcard.agents import DQNAgent
-        if args.load_checkpoint_path != "":
-            agent = DQNAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-        else:
-            agent = DQNAgent(
-                num_actions=env.num_actions,
-                state_shape=env.state_shape[0],
-                mlp_layers=[256, 256],
-                device=device,
-                save_path=args.log_dir,
-                save_every=args.save_every
-            )
-
-    agents = []
-    for _ in range(0, env.num_players):
-        # agents.append(RandomAgent(num_actions=env.num_actions))
-        agents.append(agent)
-    env.set_agents(agents)
+    agent = DQNAgent(
+        num_actions=env.num_actions,
+        state_shape=env.state_shape[0],
+        mlp_layers=[128, 128],
+        device=device,
+        save_path=args.log_dir,
+        save_every=args.save_every
+    )
+    # for _ in range(0, env.num_players):
+    #     # agents.append(RandomAgent(num_actions=env.num_actions))
+    #     agents.append(agent)
+    env.set_agents([
+        agent,
+        RandomAgent(num_actions=env.num_actions),
+        agent,
+        RandomAgent(num_actions=env.num_actions),
+    ])
 
     eval_env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            'seed': 0,
+            # 'seed': 0,
         }
     )
     eval_env.set_agents([
         agent,
         RandomAgent(num_actions=env.num_actions),
-        agent,
+        RandomAgent(num_actions=env.num_actions),
         RandomAgent(num_actions=env.num_actions),
     ])
 
@@ -139,12 +136,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--seed',
         type=int,
-        default=42,
+        # default=42,
     )
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=20000,
+        default=25000,
     )
     parser.add_argument(
         '--num_eval_games',

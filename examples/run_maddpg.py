@@ -44,8 +44,6 @@ def train(args):
         agent = MADDPGAgent(
             num_actions=env.num_actions,
             state_shape=env.state_shape[0],
-            hidden_layers_sizes=[256, 256],
-            q_mlp_layers=[128, 128],
             device=device,
             save_path=args.log_dir,
             save_every=args.save_every
@@ -76,9 +74,6 @@ def train(args):
     # Start training
     with Logger(args.log_dir) as logger:
         for episode in range(args.num_episodes):
-
-            if args.algorithm == 'nfsp':
-                agents[0].sample_episode_policy()
 
             # Generate data from the environment
             trajectories, payoffs = env.run(is_training=True)
@@ -128,8 +123,6 @@ if __name__ == '__main__':
         '--algorithm',
         type=str,
         default='maddpg',
-        # default='dqn',
-        # default='nfsp',
         choices=[
             'dqn',
             'nfsp',

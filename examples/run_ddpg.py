@@ -28,13 +28,13 @@ def train(args):
     writer = SummaryWriter(args.log_dir)
     save_config(args, args.log_dir)
     # Seed numpy, torch, random
-    set_seed(args.seed)
+    # set_seed(args.seed)
 
     # Make the environment with seed
     env = rlcard.make(
         args.env,
         config={
-            'seed': args.seed,
+            # 'seed': args.seed,
         }
     )
 
@@ -44,24 +44,22 @@ def train(args):
         agent = DDPGAgent(
             num_actions=env.num_actions,
             state_shape=env.state_shape[0],
-            hidden_layers_sizes=[256, 256],
-            q_mlp_layers=[128, 128],
             device=device,
             save_path=args.log_dir,
             save_every=args.save_every
         )
 
     agents = [agent,
-              RandomAgent(num_actions=env.num_actions),
               agent,
-              RandomAgent(num_actions=env.num_actions)
+              agent,
+              agent,
               ]
     env.set_agents(agents)
 
     eval_env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            'seed': 0,
+            # 'seed': 0,
         }
     )
     eval_env.set_agents([
@@ -95,14 +93,11 @@ def train(args):
             # writer.add_scalars('loss', global_step=episode,
             #                    tag_scalar_dict={'actor': agent.a_loss, 'critic': agent.c_loss})
 
-            writer.add_scalar('reward', payoffs[0], global_step=episode)
-
             # Evaluate the performance. Play with random agents.
             if episode > 0 and episode % args.evaluate_every == 0:
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
                 writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-
 
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
@@ -132,8 +127,6 @@ if __name__ == '__main__':
         '--algorithm',
         type=str,
         default='ddpg',
-        # default='dqn',
-        # default='nfsp',
         choices=[
             'dqn',
             'nfsp',

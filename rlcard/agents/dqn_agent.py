@@ -55,7 +55,7 @@ class DQNAgent(object):
                  state_shape=None,
                  train_every=10,
                  mlp_layers=None,
-                 learning_rate=0.0005,
+                 learning_rate=0.001,
                  device=None,
                  save_path=None,
                  save_every=float('inf'), ):
@@ -137,7 +137,8 @@ class DQNAgent(object):
         self.total_t += 1
         tmp = self.total_t - self.replay_memory_init_size
         if tmp >= 0 and tmp % self.train_every == 0:
-            self.train()
+            if len(self.memory.memory) > self.memory.batch_size:
+                self.train()
 
     def step(self, state):
         ''' Predict the action for genrating training data but

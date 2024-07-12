@@ -29,16 +29,12 @@ class MADDPGAgent(object):
                  epsilon_start=1.0,
                  epsilon_end=0.01,
                  epsilon_decay_steps=20000,
-                 batch_size=64,
-                 num_actions=2,
+                 batch_size=128,
+                 num_actions=4,
                  train_every=10,
                  state_shape=None,
-                 mlp_layers=None,
-                 learning_rate=0.0005,
                  device=None,
                  save_path=None,
-                 hidden_layers_sizes=[64, 64],
-                 q_mlp_layers=[64, 64],
                  save_every=float('inf'), ):
 
         '''
@@ -102,9 +98,9 @@ class MADDPGAgent(object):
         self.obs_dim = state_shape[0]
         self.act_dim = num_actions
         self.device = device
-        self.a_lr = 0.0001
-        self.c_lr = 0.0001
-        self.batch_size = 64
+        self.a_lr = 0.0005
+        self.c_lr = 0.0005
+        self.batch_size = 128
         self.gamma = 0.95
         self.tau = 0.001
         self.model_episode = 0
@@ -178,7 +174,7 @@ class MADDPGAgent(object):
         info['values'] = {state['raw_legal_actions'][i]: float(q_values[list(state['legal_actions'].keys())[i]]) for i
                           in range(len(state['legal_actions']))}
 
-        return best_action, info
+        return q_values, info
 
     def predict(self, state):
         ''' Predict the masked Q-values

@@ -76,8 +76,10 @@ class Env(object):
                 (dict): The next state
                 (int): The ID of the next player
         '''
+
         if raw_action:
             action = np.argmax(action)
+            pass
         action = self._decode_action(action)
 
         self.timestep += 1

@@ -44,18 +44,18 @@ def train(args):
         agent = NFSPAgent(
             num_actions=env.num_actions,
             state_shape=env.state_shape[0],
-            hidden_layers_sizes=[256, 256],
-            q_mlp_layers=[256, 256],
+            hidden_layers_sizes=[128, 128],
+            q_mlp_layers=[128, 128],
             device=device,
             save_path=args.log_dir,
             save_every=args.save_every
         )
 
-    agents = [agent, RandomAgent(num_actions=env.num_actions),
-              agent, RandomAgent(num_actions=env.num_actions)]
-    for _ in range(0, env.num_players):
-        # agents.append(RandomAgent(num_actions=env.num_actions))
-        agents.append(agent)
+    agents = [agent,
+              agent,
+              agent,
+              agent,
+              ]
     env.set_agents(agents)
 
     eval_env = rlcard.make(
@@ -92,13 +92,11 @@ def train(args):
             for ts in trajectories[0]:
                 agent.feed(ts)
 
-            writer.add_scalar('reward', payoffs[0], global_step=episode)
-
             # Evaluate the performance. Play with random agents.
             if episode > 0 and episode % args.evaluate_every == 0:
                 rewards = tournament(eval_env, args.num_eval_games)
                 eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
+                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 2)
 
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
@@ -127,8 +125,6 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        # default='ddpg',
-        # default='dqn',
         default='nfsp',
         choices=[
             'dqn',

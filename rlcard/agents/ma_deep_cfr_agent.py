@@ -108,7 +108,7 @@ class MADeepCFRAgent():
         self._reinitialize_advantage_networks = reinitialize_advantage_networks
         self._num_actions = self._env.num_actions
         self._iteration = 1
-        self.use_raw = True
+        self.use_raw = False
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         # Define strategy network, loss & memory.
@@ -243,7 +243,7 @@ class MADeepCFRAgent():
             for action in actions:
                 while self._env.timestep != cur_step:
                     self._env.step_back()
-                child_state, child = self._env.step(action)
+                child_state, child = self._env.step(action, raw_action=False)
                 expected_payoff[action] = self._traverse_game_tree(child_state, player)
                 self._env.step_back()
 
@@ -273,7 +273,7 @@ class MADeepCFRAgent():
             self._strategy_memories.add(
                 StrategyMemory(
                     state['obs'].flatten(), self._iteration, strategy))
-            child_state, _ = self._env.step(sampled_action)
+            child_state, _ = self._env.step(sampled_action, raw_action=False)
             return self._traverse_game_tree(child_state, player)
 
     def _sample_action_from_advantage(self, env, state, player):
