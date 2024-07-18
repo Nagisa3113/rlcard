@@ -12,13 +12,10 @@ from rlcard.agents import RandomAgent
 from rlcard.agents.ac_agent import ACAgent
 from rlcard.utils import (
     get_device,
-    set_seed,
     tournament,
     reorganize,
-    Logger,
-    plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath, save_config
 
 
 def train(args):
@@ -39,14 +36,13 @@ def train(args):
     )
 
     # Initialize the agent and use random agents as opponents
-    if args.algorithm == 'ac':
-        agent = ACAgent(
-            num_actions=env.num_actions,
-            state_shape=env.state_shape[0],
-            device=device,
-            save_path=args.log_dir,
-            save_every=args.save_every
-        )
+    agent = ACAgent(
+        num_actions=env.num_actions,
+        state_shape=env.state_shape[0],
+        device=device,
+        save_path=args.log_dir,
+        save_every=args.save_every
+    )
 
     agents = [agent,
               agent,
@@ -71,32 +67,18 @@ def train(args):
     eval_reward = 0
 
     # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
+    for episode in range(args.num_episodes):
+        # Generate data from the environment
+        trajectories, payoffs = env.run(is_training=True)
+        trajectories = reorganize(trajectories, payoffs)
+        for ts in trajectories[0]:
+            agent.feed(ts)
 
-            # Generate data from the environment
-            trajectories, payoffs = env.run(is_training=True)
-
-            # Reorganaize the data to be state, action, reward, next_state, done
-            trajectories = reorganize(trajectories, payoffs)
-
-            # Feed transitions into agent memory, and train the agent
-            # Here, we assume that DQN always plays the first position
-            # and the other players play randomly (if any)
-            for ts in trajectories[0]:
-                agent.feed(ts)
-
-            # Evaluate the performance. Play with random agents.
-            if episode > 0 and episode % args.evaluate_every == 0:
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-
-        # Get the paths
-        csv_path, fig_path = logger.csv_path, logger.fig_path
-
-    # Plot the learning curve
-    plot_curve(csv_path, fig_path, args.algorithm)
+        # Evaluate the performance. Play with random agents.
+        if episode > 0 and episode % args.evaluate_every == 0:
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode)
 
     # Save model
     save_path = os.path.join(args.log_dir, 'model.pth')
@@ -139,7 +121,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=40000,
+        default=20000,
     )
     parser.add_argument(
         '--num_eval_games',

@@ -3,6 +3,7 @@
 import os
 import argparse
 
+import torch
 from tensorboardX import SummaryWriter
 
 import rlcard
@@ -11,12 +12,10 @@ from rlcard.agents import (
 )
 from rlcard.agents.ma_deep_cfr_agent import MADeepCFRAgent
 from rlcard.utils import (
-    set_seed,
     tournament,
     Logger,
-    plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath, save_config
 
 
 def train(args):
@@ -63,24 +62,24 @@ def train(args):
         RandomAgent(num_actions=env.num_actions),
         RandomAgent(num_actions=env.num_actions),
     ])
+
+
     eval_reward = 0
-    # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
-            # agent.train()
-            agent.solve()
-            print('\rIteration {}'.format(episode), end='')
-            # Evaluate the performance. Play with Random agents.
-            evey = args.evaluate_every
-            if episode % args.evaluate_every == 0:
-                # agent.save()  # Save model
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 5)
-        # Get the paths
-        csv_path, fig_path = logger.csv_path, logger.fig_path
-    # Plot the learning curve
-    plot_curve(csv_path, fig_path, 'macfr')
+    for episode in range(args.num_episodes):
+        # agent.train()
+        agent.solve()
+        print('\rIteration {}'.format(episode), end='')
+        # Evaluate the performance. Play with Random agents.
+        evey = args.evaluate_every
+        if episode % args.evaluate_every == 0:
+            # agent.save()  # Save model
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode * 4)
+
+    save_path = os.path.join(args.log_dir, 'model.pth')
+    torch.save(agent, save_path)
+    print('Model saved in', save_path)
 
 
 if __name__ == '__main__':
@@ -120,7 +119,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=200,
+        default=1000,
     )
     parser.add_argument(
         '--evaluate_every',

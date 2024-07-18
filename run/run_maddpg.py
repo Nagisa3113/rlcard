@@ -8,8 +8,8 @@ import torch
 from tensorboardX import SummaryWriter
 
 import rlcard
-from rlcard.agents import RandomAgent, DQNAgent
-from rlcard.agents.ddpg_agent import DDPGAgent
+from rlcard.agents import RandomAgent
+from rlcard.agents.maddpg_agent import MADDPGAgent
 from rlcard.utils import (
     get_device,
     set_seed,
@@ -18,7 +18,7 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath, save_config
 
 
 def train(args):
@@ -28,38 +28,38 @@ def train(args):
     writer = SummaryWriter(args.log_dir)
     save_config(args, args.log_dir)
     # Seed numpy, torch, random
-    # set_seed(args.seed)
+    set_seed(args.seed)
 
     # Make the environment with seed
     env = rlcard.make(
         args.env,
         config={
-            # 'seed': args.seed,
+            'seed': args.seed,
         }
     )
 
-    agent = DQNAgent(
-        num_actions=env.num_actions,
-        state_shape=env.state_shape[0],
-        mlp_layers=[128, 128],
-        device=device,
-        save_path=args.log_dir,
-        save_every=args.save_every
-    )
-    # for _ in range(0, env.num_players):
-    #     # agents.append(RandomAgent(num_actions=env.num_actions))
-    #     agents.append(agent)
-    env.set_agents([
-        agent,
-        RandomAgent(num_actions=env.num_actions),
-        agent,
-        RandomAgent(num_actions=env.num_actions),
-    ])
+    if args.load_checkpoint_path != "":
+        agent = MADDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
+    else:
+        agent = MADDPGAgent(
+            num_actions=env.num_actions,
+            state_shape=env.state_shape[0],
+            device=device,
+            save_path=args.log_dir,
+            save_every=args.save_every
+        )
+
+    agents = [agent,
+              agent,
+              agent,
+              agent,
+              ]
+    env.set_agents(agents)
 
     eval_env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            # 'seed': 0,
+            'seed': 0,
         }
     )
     eval_env.set_agents([
@@ -71,32 +71,20 @@ def train(args):
 
     eval_reward = 0
 
-    # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
-            # Generate data from the environment
-            trajectories, payoffs = env.run(is_training=True)
+    for episode in range(args.num_episodes):
+        trajectories, payoffs = env.run(is_training=True)
+        trajectories = reorganize(trajectories, payoffs)
 
-            # Reorganaize the data to be state, action, reward, next_state, done
-            trajectories = reorganize(trajectories, payoffs)
+        for ts in trajectories:
+            for s in ts:
+                agent.feed(s)
+            # agent.feed(ts)
 
-            # Feed transitions into agent memory, and train the agent
-            # Here, we assume that DQN always plays the first position
-            # and the other players play randomly (if any)
-            for ts in trajectories[0]:
-                agent.feed(ts)
-
-            # Evaluate the performance. Play with random agents.
-            if episode > 0 and episode % args.evaluate_every == 0:
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-
-        # Get the paths
-        csv_path, fig_path = logger.csv_path, logger.fig_path
-
-    # Plot the learning curve
-    plot_curve(csv_path, fig_path, args.algorithm)
+        # Evaluate the performance. Play with random agents.
+        if episode > 0 and episode % args.evaluate_every == 0:
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode)
 
     # Save model
     save_path = os.path.join(args.log_dir, 'model.pth')
@@ -119,9 +107,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        # default='ddpg',
-        default='dqn',
-        # default='nfsp',
+        default='maddpg',
         choices=[
             'dqn',
             'nfsp',
@@ -136,12 +122,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--seed',
         type=int,
-        # default=42,
+        default=42,
     )
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=25000,
+        default=20000,
     )
     parser.add_argument(
         '--num_eval_games',

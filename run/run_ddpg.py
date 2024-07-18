@@ -9,16 +9,14 @@ from tensorboardX import SummaryWriter
 
 import rlcard
 from rlcard.agents import RandomAgent
-from rlcard.agents.maddpg_agent import MADDPGAgent
+from rlcard.agents.ddpg_agent import DDPGAgent
 from rlcard.utils import (
     get_device,
-    set_seed,
     tournament,
     reorganize,
     Logger,
-    plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath, save_config
 
 
 def train(args):
@@ -28,20 +26,20 @@ def train(args):
     writer = SummaryWriter(args.log_dir)
     save_config(args, args.log_dir)
     # Seed numpy, torch, random
-    set_seed(args.seed)
+    # set_seed(args.seed)
 
     # Make the environment with seed
     env = rlcard.make(
         args.env,
         config={
-            'seed': args.seed,
+            # 'seed': args.seed,
         }
     )
 
     if args.load_checkpoint_path != "":
-        agent = MADDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
+        agent = DDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
     else:
-        agent = MADDPGAgent(
+        agent = DDPGAgent(
             num_actions=env.num_actions,
             state_shape=env.state_shape[0],
             device=device,
@@ -59,7 +57,7 @@ def train(args):
     eval_env = rlcard.make(
         'multi-leduc-holdem',
         config={
-            'seed': 0,
+            # 'seed': 0,
         }
     )
     eval_env.set_agents([
@@ -71,35 +69,19 @@ def train(args):
 
     eval_reward = 0
 
-    # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
+    for episode in range(args.num_episodes):
+        # Generate data from the environment
+        trajectories, payoffs = env.run(is_training=True)
+        # Reorganaize the data to be state, action, reward, next_state, done
+        trajectories = reorganize(trajectories, payoffs)
 
-            # Generate data from the environment
-            trajectories, payoffs = env.run(is_training=True)
-
-            # Reorganaize the data to be state, action, reward, next_state, done
-            trajectories = reorganize(trajectories, payoffs)
-
-            # Feed transitions into agent memory, and train the agent
-            # Here, we assume that DQN always plays the first position
-            # and the other players play randomly (if any)
-            for ts in trajectories:
-                for s in ts:
-                    agent.feed(s)
-                # agent.feed(ts)
-
-            # Evaluate the performance. Play with random agents.
-            if episode > 0 and episode % args.evaluate_every == 0:
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-
-        # Get the paths
-        csv_path, fig_path = logger.csv_path, logger.fig_path
-
-    # Plot the learning curve
-    plot_curve(csv_path, fig_path, args.algorithm)
+        for ts in trajectories[0]:
+            agent.feed(ts)
+        # Evaluate the performance. Play with random agents.
+        if episode > 0 and episode % args.evaluate_every == 0:
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode)
 
     # Save model
     save_path = os.path.join(args.log_dir, 'model.pth')
@@ -122,7 +104,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        default='maddpg',
+        default='ddpg',
         choices=[
             'dqn',
             'nfsp',
@@ -147,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=2000,
+        default=1000,
     )
     parser.add_argument(
         '--evaluate_every',

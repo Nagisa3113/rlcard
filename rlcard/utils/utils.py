@@ -235,6 +235,29 @@ def tournament(env, num):
     return payoffs
 
 
+def tournament_wp(env, num):
+    ''' Evaluate the performance of the agents in the environment
+
+    Args:
+        env (Env class): The environment to be evaluated.
+        num (int): The number of games to play.
+
+    Returns:
+        A list of average payoffs for each player
+    '''
+    wins = [0 for _ in range(env.num_players)]
+    counter = 0
+    while counter < num:
+        _, _payoffs = env.run(is_training=False)
+        for i, _p in enumerate(_payoffs):
+            if _p >= 0:
+                wins[i] += 1
+        counter += 1
+    for i, _ in enumerate(wins):
+        wins[i] /= counter
+    return wins
+
+
 def plot_curve(csv_path, save_path, algorithm):
     ''' Read data from csv file and plot the results
     '''

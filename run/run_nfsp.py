@@ -9,7 +9,6 @@ from tensorboardX import SummaryWriter
 
 import rlcard
 from rlcard.agents import RandomAgent, NFSPAgent
-from rlcard.agents.ddpg_agent import DDPGAgent
 from rlcard.utils import (
     get_device,
     set_seed,
@@ -18,7 +17,7 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath, save_config
 
 
 def train(args):
@@ -73,36 +72,21 @@ def train(args):
 
     eval_reward = 0
 
-    # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
+    for episode in range(args.num_episodes):
+        if args.algorithm == 'nfsp':
+            agents[0].sample_episode_policy()
 
-            if args.algorithm == 'nfsp':
-                agents[0].sample_episode_policy()
+        trajectories, payoffs = env.run(is_training=True)
+        trajectories = reorganize(trajectories, payoffs)
 
-            # Generate data from the environment
-            trajectories, payoffs = env.run(is_training=True)
+        for ts in trajectories[0]:
+            agent.feed(ts)
 
-            # Reorganaize the data to be state, action, reward, next_state, done
-            trajectories = reorganize(trajectories, payoffs)
-
-            # Feed transitions into agent memory, and train the agent
-            # Here, we assume that DQN always plays the first position
-            # and the other players play randomly (if any)
-            for ts in trajectories[0]:
-                agent.feed(ts)
-
-            # Evaluate the performance. Play with random agents.
-            if episode > 0 and episode % args.evaluate_every == 0:
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 2)
-
-        # Get the paths
-        csv_path, fig_path = logger.csv_path, logger.fig_path
-
-    # Plot the learning curve
-    plot_curve(csv_path, fig_path, args.algorithm)
+        # Evaluate the performance. Play with random agents.
+        if episode > 0 and episode % args.evaluate_every == 0:
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode * 2)
 
     # Save model
     save_path = os.path.join(args.log_dir, 'model.pth')
@@ -145,12 +129,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=20000,
+        default=10000,
     )
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=2000,
+        default=1000,
     )
     parser.add_argument(
         '--evaluate_every',

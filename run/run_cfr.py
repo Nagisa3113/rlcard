@@ -7,16 +7,16 @@ from tensorboardX import SummaryWriter
 
 import rlcard
 from rlcard.agents import (
+    CFRAgent,
     RandomAgent,
 )
-from rlcard.agents.deep_cfr_agent import DeepCFRAgent
 from rlcard.utils import (
     set_seed,
     tournament,
     Logger,
     plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath
 
 
 def train(args):
@@ -37,22 +37,19 @@ def train(args):
 
     _, args.log_dir = make_logpath(args.env, args.algorithm)
     writer = SummaryWriter(args.log_dir)
-    save_config(args, args.log_dir)
+
     # Seed numpy, torch, random
     set_seed(args.seed)
 
-    agent = DeepCFRAgent(
+    # Initilize CFR Agent
+    agent = CFRAgent(
         env,
-        policy_network_layers=(256, 256),
-        advantage_network_layers=(256, 256),
-        num_iterations=1,
-        num_traversals=1,
-        learning_rate=0.0001,
-        batch_size_advantage=256,
-        batch_size_strategy=256,
-        memory_capacity=1e7)
-
-    # agent.load()  # If we have saved model, we first load the model
+        os.path.join(
+            args.log_dir,
+            'cfr_model',
+        ),
+    )
+    agent.load()  # If we have saved model, we first load the model
 
     # Evaluate CFR against random
     eval_env.set_agents([
@@ -61,19 +58,28 @@ def train(args):
         RandomAgent(num_actions=env.num_actions),
         RandomAgent(num_actions=env.num_actions),
     ])
-    eval_reward = 0
+
+
     # Start training
     with Logger(args.log_dir) as logger:
         for episode in range(args.num_episodes):
-            # agent.train()
-            agent.solve()
+            agent.train()
             print('\rIteration {}'.format(episode), end='')
             # Evaluate the performance. Play with Random agents.
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode * 4)
+
             if episode % args.evaluate_every == 0:
-                # agent.save()  # Save model
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode * 2)
+                agent.save()  # Save model
+                logger.log_performance(
+                    episode,
+                    tournament(
+                        eval_env,
+                        args.num_eval_games
+                    )[0]
+                )
+
         # Get the paths
         csv_path, fig_path = logger.csv_path, logger.fig_path
     # Plot the learning curve
@@ -81,7 +87,7 @@ def train(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser("CFR")
+    parser = argparse.ArgumentParser("CFR example in RLCard")
     parser.add_argument(
         '--env',
         type=str,
@@ -95,12 +101,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        default='deepcfr',
-        choices=[
-            'dqn',
-            'nfsp',
-            'ddpg',
-        ],
+        default='cfr',
     )
     parser.add_argument(
         '--seed',
@@ -110,22 +111,22 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=20000,
+        default=5000,
     )
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=200,
+        default=1000,
     )
     parser.add_argument(
         '--evaluate_every',
         type=int,
-        default=10,
+        default=20,
     )
     parser.add_argument(
         '--log_dir',
         type=str,
-        default='experiments/result/',
+        default='experiments/leduc_holdem_cfr_result/',
     )
 
     args = parser.parse_args()

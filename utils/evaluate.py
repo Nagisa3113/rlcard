@@ -14,6 +14,7 @@ from rlcard.utils import (
     tournament,
 )
 
+
 def load_model(model_path, env=None, position=None, device=None):
     if os.path.isfile(model_path):  # Torch model
         import torch
@@ -29,19 +30,20 @@ def load_model(model_path, env=None, position=None, device=None):
     else:  # A model in the model zoo
         from rlcard import models
         agent = models.load(model_path).agents[position]
-    
+
     return agent
 
-def evaluate(args):
 
+def evaluate(args):
     # Check whether gpu is available
     device = get_device()
-        
+
     # Seed numpy, torch, random
     set_seed(args.seed)
 
     # Make the environment with seed
     env = rlcard.make(args.env, config={'seed': args.seed})
+
 
     # Load models
     agents = []
@@ -54,28 +56,26 @@ def evaluate(args):
     for position, reward in enumerate(rewards):
         print(position, args.models[position], reward)
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser("Evaluation example in RLCard")
+    parser = argparse.ArgumentParser("Evaluation in RLCard")
     parser.add_argument(
         '--env',
         type=str,
-        default='leduc-holdem',
+        default='multi-leduc-holdem',
         choices=[
-            'blackjack',
             'leduc-holdem',
             'limit-holdem',
-            'doudizhu',
-            'mahjong',
             'no-limit-holdem',
-            'uno',
-            'gin-rummy',
         ],
     )
     parser.add_argument(
         '--models',
         nargs='*',
         default=[
-            'experiments/leduc_holdem_dqn_result/model.pth',
+            r'experiments\multi-leduc-holdem\madeepcfr\run9\model.pth',
+            'random',
+            'random',
             'random',
         ],
     )
@@ -92,11 +92,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_games',
         type=int,
-        default=10000,
+        default=1000,
     )
 
     args = parser.parse_args()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
     evaluate(args)
-

@@ -8,17 +8,15 @@ import torch
 from tensorboardX import SummaryWriter
 
 import rlcard
-from rlcard.agents import RandomAgent
-from rlcard.agents.ddpg_agent import DDPGAgent
+from rlcard.agents import RandomAgent, DQNAgent
 from rlcard.utils import (
     get_device,
-    set_seed,
     tournament,
     reorganize,
     Logger,
     plot_curve,
 )
-from utils import make_logpath, save_config
+from utils.utils import make_logpath, save_config
 
 
 def train(args):
@@ -38,23 +36,23 @@ def train(args):
         }
     )
 
-    if args.load_checkpoint_path != "":
-        agent = DDPGAgent.from_checkpoint(checkpoint=torch.load(args.load_checkpoint_path))
-    else:
-        agent = DDPGAgent(
-            num_actions=env.num_actions,
-            state_shape=env.state_shape[0],
-            device=device,
-            save_path=args.log_dir,
-            save_every=args.save_every
-        )
-
-    agents = [agent,
-              agent,
-              agent,
-              agent,
-              ]
-    env.set_agents(agents)
+    agent = DQNAgent(
+        num_actions=env.num_actions,
+        state_shape=env.state_shape[0],
+        mlp_layers=[64, 64],
+        device=device,
+        save_path=args.log_dir,
+        save_every=args.save_every
+    )
+    # for _ in range(0, env.num_players):
+    #     # agents.append(RandomAgent(num_actions=env.num_actions))
+    #     agents.append(agent)
+    env.set_agents([
+        agent,
+        RandomAgent(num_actions=env.num_actions),
+        agent,
+        RandomAgent(num_actions=env.num_actions),
+    ])
 
     eval_env = rlcard.make(
         'multi-leduc-holdem',
@@ -71,39 +69,17 @@ def train(args):
 
     eval_reward = 0
 
-    # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
+    for episode in range(args.num_episodes):
+        trajectories, payoffs = env.run(is_training=True)
+        trajectories = reorganize(trajectories, payoffs)
 
-            if args.algorithm == 'nfsp':
-                agents[0].sample_episode_policy()
+        for ts in trajectories[0]:
+            agent.feed(ts)
 
-            # Generate data from the environment
-            trajectories, payoffs = env.run(is_training=True)
-
-            # Reorganaize the data to be state, action, reward, next_state, done
-            trajectories = reorganize(trajectories, payoffs)
-
-            # Feed transitions into agent memory, and train the agent
-            # Here, we assume that DQN always plays the first position
-            # and the other players play randomly (if any)
-            for ts in trajectories[0]:
-                agent.feed(ts)
-
-            # writer.add_scalars('loss', global_step=episode,
-            #                    tag_scalar_dict={'actor': agent.a_loss, 'critic': agent.c_loss})
-
-            # Evaluate the performance. Play with random agents.
-            if episode > 0 and episode % args.evaluate_every == 0:
-                rewards = tournament(eval_env, args.num_eval_games)
-                eval_reward = rewards[0]
-                writer.add_scalar('eval_reward', eval_reward, global_step=episode)
-
-        # Get the paths
-        csv_path, fig_path = logger.csv_path, logger.fig_path
-
-    # Plot the learning curve
-    plot_curve(csv_path, fig_path, args.algorithm)
+        if episode > 0 and episode % args.evaluate_every == 0:
+            rewards = tournament(eval_env, args.num_eval_games)
+            eval_reward = rewards[0]
+            writer.add_scalar('eval_reward', eval_reward, global_step=episode)
 
     # Save model
     save_path = os.path.join(args.log_dir, 'model.pth')
@@ -126,7 +102,9 @@ if __name__ == '__main__':
     parser.add_argument(
         '--algorithm',
         type=str,
-        default='ddpg',
+        # default='ddpg',
+        default='dqn',
+        # default='nfsp',
         choices=[
             'dqn',
             'nfsp',
@@ -141,7 +119,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--seed',
         type=int,
-        default=42,
+        # default=42,
     )
     parser.add_argument(
         '--num_episodes',
@@ -151,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_eval_games',
         type=int,
-        default=2000,
+        default=1000,
     )
     parser.add_argument(
         '--evaluate_every',
