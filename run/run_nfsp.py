@@ -1,5 +1,3 @@
-''' An example of training a reinforcement learning agent on the environments in RLCard
-'''
 import os
 import argparse
 from datetime import datetime
@@ -14,8 +12,6 @@ from rlcard.utils import (
     set_seed,
     tournament,
     reorganize,
-    Logger,
-    plot_curve,
 )
 from utils.utils import make_logpath, save_config
 

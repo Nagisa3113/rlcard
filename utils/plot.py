@@ -1,6 +1,4 @@
 import os
-
-import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -30,27 +28,27 @@ def readc(filepath, algo):
             sns.lineplot(x=smoothed_mean_df.columns[0], y=col, data=smoothed_mean_df, label=algo)
 
 
-input_file = r'D:\Documents\PycharmProjects\rlcard\csv\ac.csv'
+input_file = r'../experiments/multi-leduc-holdem/ac/ac.csv'
 readc(input_file, 'Actor-Critic')
-input_file = r'D:\Documents\PycharmProjects\rlcard\csv\ddpg.csv'
+input_file = r'../experiments/multi-leduc-holdem/ddpg/ddpg.csv'
 readc(input_file, 'DDPG')
-input_file = r'D:\Documents\PycharmProjects\rlcard\csv\dqn.csv'
+input_file = r'../experiments/multi-leduc-holdem/dqn/dqn.csv'
 readc(input_file, 'DQN')
-input_file = r'D:\Documents\PycharmProjects\rlcard\csv\nfsp.csv'
+input_file = r'../experiments/multi-leduc-holdem/nfsp/nfsp.csv'
 readc(input_file, 'NFSP')
-input_file = r'D:\Documents\PycharmProjects\rlcard\csv\madeeepcfr.csv'
+input_file = r'../experiments/multi-leduc-holdem/madeepcfr/madeeepcfr.csv'
 readc(input_file, 'MADeepCFR')
 
-# input_file = r'D:\Documents\PycharmProjects\rlcard\csv\cfr.csv'
-# readc(input_file, 'CFR')
-# input_file = r'D:\Documents\PycharmProjects\rlcard\csv\deepcfr.csv'
-# readc(input_file, 'DeepCFR')
-# input_file = r'D:\Documents\PycharmProjects\rlcard\csv\madeeepcfr.csv'
-# readc(input_file, 'MADeepCFR')
+input_file = r'/experiments/cfr/cfr.csv'
+readc(input_file, 'CFR')
+input_file = r'/experiments/multi-leduc-holdem/deepcfr/deepcfr.csv'
+readc(input_file, 'DeepCFR')
+input_file = r'/experiments/multi-leduc-holdem/madeepcfr/madeepcfr.csv'
+readc(input_file, 'MADeepCFR')
 
 plt.xlabel('Episode')
 plt.ylabel('Reward')
-# plt.title('Result of CFR')
+# plt.title('Result')
 plt.legend()
 plt.grid()
 plt.ylim(-0., 0.7)

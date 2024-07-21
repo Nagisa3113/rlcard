@@ -1,5 +1,3 @@
-''' An example of solve Leduc Hold'em with CFR (chance sampling)
-'''
 import os
 import argparse
 
@@ -13,7 +11,6 @@ from rlcard.agents import (
 from rlcard.agents.ma_deep_cfr_agent import MADeepCFRAgent
 from rlcard.utils import (
     tournament,
-    Logger,
 )
 from utils.utils import make_logpath, save_config
 

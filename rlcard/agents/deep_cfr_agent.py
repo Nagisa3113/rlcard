@@ -38,8 +38,6 @@ import torch.nn.functional as F
 
 from rlcard.utils.utils import remove_illegal
 
-# from open_spiel.python import policy
-
 AdvantageMemory = collections.namedtuple(
     "AdvantageMemory", "info_state iteration advantage action")
 

@@ -1,5 +1,3 @@
-''' An example of solve Leduc Hold'em with CFR (chance sampling)
-'''
 import os
 import argparse
 

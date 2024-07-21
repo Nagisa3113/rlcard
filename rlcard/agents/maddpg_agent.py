@@ -5,21 +5,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 from collections import namedtuple
-from copy import deepcopy
 from torch.nn.utils import clip_grad_norm_
-
-from torch.optim import Adam
-
-from rlcard.utils.utils import remove_illegal
 
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state', 'done', 'legal_actions'])
 
 
 class MADDPGAgent(object):
-    '''
-    Approximate clone of rlcard.agents.dqn_agent.DQNAgent
-    that depends on PyTorch instead of Tensorflow
-    '''
 
     def __init__(self,
                  replay_memory_size=20000,
@@ -36,33 +27,6 @@ class MADDPGAgent(object):
                  device=None,
                  save_path=None,
                  save_every=float('inf'), ):
-
-        '''
-        Q-Learning algorithm for off-policy TD control using Function Approximation.
-        Finds the optimal greedy policy while following an epsilon-greedy policy.
-
-        Args:
-            replay_memory_size (int): Size of the replay memory
-            replay_memory_init_size (int): Number of random experiences to sample when initializing
-              the reply memory.
-            update_target_estimator_every (int): Copy parameters from the Q estimator to the
-              target estimator every N steps
-            discount_factor (float): Gamma discount factor
-            epsilon_start (float): Chance to sample a random action when taking an action.
-              Epsilon is decayed over time and this is the start value
-            epsilon_end (float): The final minimum value of epsilon after decaying is done
-            epsilon_decay_steps (int): Number of steps to decay epsilon over
-            batch_size (int): Size of batches to sample from the replay memory
-            evaluate_every (int): Evaluate every N steps
-            num_actions (int): The number of the actions
-            state_space (list): The space of the state vector
-            train_every (int): Train the network every X steps.
-            mlp_layers (list): The layer number and the dimension of each layer in MLP
-            learning_rate (float): The learning rate of the DQN agent.
-            device (torch.device): whether to use the cpu or gpu
-            save_path (str): The path to save the model checkpoints
-            save_every (int): Save the model every X training steps
-        '''
 
         self.use_raw = True
         self.replay_memory_init_size = replay_memory_init_size
@@ -121,13 +85,7 @@ class MADDPGAgent(object):
         self.a_loss = 0
 
     def feed(self, ts):
-        ''' Store data in to replay buffer and train the agent. There are two stages.
-            In stage 1, populate the memory without training
-            In stage 2, train the agent every several timesteps
 
-        Args:
-            ts (list): a list of 5 elements that represent the transition
-        '''
         (state, action, reward, next_state, done) = tuple(ts)
         self.feed_memory(state['obs'], action, reward, next_state['obs'], list(next_state['legal_actions'].keys()),
                          done)
@@ -137,17 +95,8 @@ class MADDPGAgent(object):
             self.train()
 
     def step(self, state):
-        ''' Predict the action for genrating training data but
-            have the predictions disconnected from the computation graph
 
-        Args:
-            state (numpy.array): current state
-
-        Returns:
-            action (int): an action id
-        '''
         q_values = self.predict(state)
-        # epsilon = self.epsilons[min(self.total_t, self.epsilon_decay_steps - 1)]
         legal_actions = list(state['legal_actions'].keys())
         for i in range(q_values.size):
             if i in legal_actions:
@@ -158,15 +107,7 @@ class MADDPGAgent(object):
         return q_values
 
     def eval_step(self, state):
-        ''' Predict the action for evaluation purpose.
 
-        Args:
-            state (numpy.array): current state
-
-        Returns:
-            action (int): an action id
-            info (dict): A dictionary containing information
-        '''
         q_values = self.predict(state)
         best_action = np.argmax(q_values)
 
@@ -177,14 +118,6 @@ class MADDPGAgent(object):
         return q_values, info
 
     def predict(self, state):
-        ''' Predict the masked Q-values
-
-        Args:
-            state (numpy.array): current state
-
-        Returns:
-            q_values (numpy.array): a 1-d array where each entry represents a Q value
-        '''
 
         obs = np.expand_dims(state['obs'], 0)
         obs = torch.Tensor(obs).to(self.device)
@@ -196,11 +129,7 @@ class MADDPGAgent(object):
         return masked_q_values
 
     def train(self):
-        ''' Train the network
 
-        Returns:
-            loss (float): The loss of the current batch.
-        '''
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, legal_actions_batch = self.memory.sample()
         state_batch1, action_batch1, reward_batch1, next_state_batch1, done_batch1, legal_actions_batch1 = self.memory.sample()
         state_batch2, action_batch2, reward_batch2, next_state_batch2, done_batch2, legal_actions_batch2 = self.memory.sample()
@@ -273,9 +202,6 @@ class MADDPGAgent(object):
             soft_update(self.actor, self.actor_target, self.tau)
             soft_update(self.critic, self.critic_target, self.tau)
 
-        #     self.target_estimator = deepcopy(self.q_estimator)
-        #     print("\nINFO - Copied model parameters to target network.")
-
         self.train_t += 1
 
         # if self.save_path and self.train_t % self.save_every == 0:
@@ -285,16 +211,7 @@ class MADDPGAgent(object):
         # print("\nINFO - Saved model checkpoint.")
 
     def feed_memory(self, state, action, reward, next_state, legal_actions, done):
-        ''' Feed transition to memory
 
-        Args:
-            state (numpy.array): the current state
-            action (int): the performed action ID
-            reward (float): the reward received
-            next_state (numpy.array): the next state after performing the action
-            legal_actions (list): the legal actions of the next state
-            done (boolean): whether the episode is finished
-        '''
         self.memory.save(state, action, reward, next_state, legal_actions, done)
 
     def set_device(self, device):
@@ -311,7 +228,6 @@ class MADDPGAgent(object):
 
         return {
             'agent_type': 'DDPGAgent',
-            # 'q_estimator': self.q_estimator.checkpoint_attributes(),
             'memory': self.memory.checkpoint_attributes(),
             'total_t': self.total_t,
             'train_t': self.train_t,

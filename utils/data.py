@@ -1,7 +1,7 @@
 import csv
 import json
 
-csv_path = r"D:\Documents\PycharmProjects\rlcard\csv\dqn.csv"
+csv_path = r"..\csv\dqn.csv"
 json_path = r"D:\Downloads\multi-leduc-holdem_dqn_run5.json"
 
 with open(json_path, 'r') as fcc_file:

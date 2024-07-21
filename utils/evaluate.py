@@ -1,13 +1,8 @@
-''' An example of evluating the trained models in RLCard
-'''
 import os
 import argparse
 
 import rlcard
-from rlcard.agents import (
-    DQNAgent,
-    RandomAgent,
-)
+
 from rlcard.utils import (
     get_device,
     set_seed,
@@ -43,7 +38,6 @@ def evaluate(args):
 
     # Make the environment with seed
     env = rlcard.make(args.env, config={'seed': args.seed})
-
 
     # Load models
     agents = []

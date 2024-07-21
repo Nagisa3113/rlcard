@@ -1,11 +1,8 @@
 import os
 
 import torch
-import torch.optim as optim
-import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from torch.distributions import Categorical
 from collections import namedtuple
 import random
 
@@ -15,10 +12,6 @@ Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'
 
 
 class ACAgent(object):
-    '''
-    Approximate clone of rlcard.agents.dqn_agent.DQNAgent
-    that depends on PyTorch instead of Tensorflow
-    '''
 
     def __init__(self,
                  replay_memory_size=20000,
@@ -39,33 +32,6 @@ class ACAgent(object):
                  hidden_layers_sizes=[64, 64],
                  q_mlp_layers=[64, 64],
                  save_every=float('inf'), ):
-
-        '''
-        Q-Learning algorithm for off-policy TD control using Function Approximation.
-        Finds the optimal greedy policy while following an epsilon-greedy policy.
-
-        Args:
-            replay_memory_size (int): Size of the replay memory
-            replay_memory_init_size (int): Number of random experiences to sample when initializing
-              the reply memory.
-            update_target_estimator_every (int): Copy parameters from the Q estimator to the
-              target estimator every N steps
-            discount_factor (float): Gamma discount factor
-            epsilon_start (float): Chance to sample a random action when taking an action.
-              Epsilon is decayed over time and this is the start value
-            epsilon_end (float): The final minimum value of epsilon after decaying is done
-            epsilon_decay_steps (int): Number of steps to decay epsilon over
-            batch_size (int): Size of batches to sample from the replay memory
-            evaluate_every (int): Evaluate every N steps
-            num_actions (int): The number of the actions
-            state_space (list): The space of the state vector
-            train_every (int): Train the network every X steps.
-            mlp_layers (list): The layer number and the dimension of each layer in MLP
-            learning_rate (float): The learning rate of the DQN agent.
-            device (torch.device): whether to use the cpu or gpu
-            save_path (str): The path to save the model checkpoints
-            save_every (int): Save the model every X training steps
-        '''
 
         self.use_raw = True
         self.replay_memory_init_size = replay_memory_init_size
@@ -120,13 +86,7 @@ class ACAgent(object):
         self.a_loss = 0
 
     def feed(self, ts):
-        ''' Store data in to replay buffer and train the agent. There are two stages.
-            In stage 1, populate the memory without training
-            In stage 2, train the agent every several timesteps
 
-        Args:
-            ts (list): a list of 5 elements that represent the transition
-        '''
         (state, action, reward, next_state, done) = tuple(ts)
         self.feed_memory(state['obs'], action, reward, next_state['obs'], list(next_state['legal_actions'].keys()),
                          done)
@@ -137,17 +97,8 @@ class ACAgent(object):
                 self.train()
 
     def step(self, state):
-        ''' Predict the action for genrating training data but
-            have the predictions disconnected from the computation graph
 
-        Args:
-            state (numpy.array): current state
-
-        Returns:
-            action (int): an action id
-        '''
         q_values = self.predict(state)
-        # epsilon = self.epsilons[min(self.total_t, self.epsilon_decay_steps - 1)]
         legal_actions = list(state['legal_actions'].keys())
         for i in range(q_values.size):
             if i in legal_actions:
@@ -158,15 +109,7 @@ class ACAgent(object):
         return q_values
 
     def eval_step(self, state):
-        ''' Predict the action for evaluation purpose.
 
-        Args:
-            state (numpy.array): current state
-
-        Returns:
-            action (int): an action id
-            info (dict): A dictionary containing information
-        '''
         q_values = self.predict(state)
         best_action = np.argmax(q_values)
 
@@ -177,14 +120,6 @@ class ACAgent(object):
         return q_values, info
 
     def predict(self, state):
-        ''' Predict the masked Q-values
-
-        Args:
-            state (numpy.array): current state
-
-        Returns:
-            q_values (numpy.array): a 1-d array where each entry represents a Q value
-        '''
 
         obs = np.expand_dims(state['obs'], 0)
         obs = torch.Tensor(obs).to(self.device)
@@ -196,11 +131,7 @@ class ACAgent(object):
         return masked_q_values
 
     def train(self):
-        ''' Train the network
 
-        Returns:
-            loss (float): The loss of the current batch.
-        '''
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, legal_actions_batch = self.memory.sample()
 
         state_batch = torch.Tensor(state_batch).to(self.device)
@@ -231,16 +162,7 @@ class ACAgent(object):
         self.train_t += 1
 
     def feed_memory(self, state, action, reward, next_state, legal_actions, done):
-        ''' Feed transition to memory
 
-        Args:
-            state (numpy.array): the current state
-            action (int): the performed action ID
-            reward (float): the reward received
-            next_state (numpy.array): the next state after performing the action
-            legal_actions (list): the legal actions of the next state
-            done (boolean): whether the episode is finished
-        '''
         self.memory.save(state, action, reward, next_state, legal_actions, done)
 
     def set_device(self, device):

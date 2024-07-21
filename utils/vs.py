@@ -1,5 +1,4 @@
 import os
-import csv
 import argparse
 import torch
 
@@ -7,18 +6,15 @@ import rlcard
 from rlcard.agents import (
     CFRAgent,
     RandomAgent,
-)
-from rlcard.agents.ac_agent import ACAgent
-from rlcard.agents.ma_deep_cfr_agent import MADeepCFRAgent
+    ACAgent,
+    MADeepCFRAgent,
+    DQNAgent,
+    NFSPAgent)
+
 from rlcard.utils import (
     get_device,
-    set_seed,
-    tournament,
-    Logger,
-    plot_curve, tournament_wp,
+    tournament_wp,
 )
-from rlcard.agents import DQNAgent
-from rlcard.agents import NFSPAgent
 
 
 def evaluate(args):
@@ -82,16 +78,16 @@ def evaluate(args):
     nsave_path = r"../experiments\cfr\1000.pth"
     cfr_agent = torch.load(nsave_path)
 
-    nsave_path = r"../experiments\multi-leduc-holdem\ac\run2\model.pth"
+    nsave_path = r"../experiments\multi-leduc-holdem\ac\model.pth"
     ac_agent = torch.load(nsave_path)
 
-    nsave_path = r"../experiments\multi-leduc-holdem\dqn\run6\model.pth"
+    nsave_path = r"../experiments\multi-leduc-holdem\dqn\model.pth"
     dqn_agent = torch.load(nsave_path)
 
-    nsave_path = r"../experiments\multi-leduc-holdem\nfsp\run4\model.pth"
+    nsave_path = r"../experiments\multi-leduc-holdem\nfsp\model.pth"
     nfsp_agent = torch.load(nsave_path)
 
-    nsave_path = r"../experiments\multi-leduc-holdem\madeepcfr\run9\model.pth"
+    nsave_path = r"../experiments\multi-leduc-holdem\madeepcfr\model.pth"
     madeepcfr_agent = torch.load(nsave_path)
 
     random_agent = RandomAgent(4)
